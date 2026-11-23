@@ -1,0 +1,6 @@
+{
+  "name": "Apple-chan's Orchard",
+  "description": "An interactive Minecraft-style 3D voxel apple orchard featuring Apple-chan, with handcrafted procedural pixel textures, dynamic lighting, and cheerful character interactions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
