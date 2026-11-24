@@ -36,8 +36,9 @@ export interface ArchiveEntry {
   id: string;
   requiredTrust: number;
   title: string;
-  body: string;
+  unlockNote: string;
   poem?: string;
+  paragraphs: string[];
 }
 
 export interface TranslationPack {
@@ -98,6 +99,29 @@ export interface TranslationPack {
   accountSignOutBtn: string;
   accountOfflineNotice: string;
   langSwitchTooltip: string;
+  seasonCycleTooltip: string;
+  craftingBtn: string;
+  craftingTitle: string;
+  craftingSubtitle: string;
+  craftingClearBtn: string;
+  craftingCraftBtn: string;
+  craftingEmptyOutput: string;
+  craftingRecipesHeading: string;
+  craftingIngredientsHeading: string;
+  craftingHint: string;
+  craftingRecipeNames: {
+    cider: string;
+    pie: string;
+    appleSeed: string;
+    goldenSeed: string;
+  };
+  craftingRecipeDescs: {
+    cider: string;
+    pie: string;
+    appleSeed: string;
+    goldenSeed: string;
+  };
+  insideCottageLabel: string;
   guideBtn: string;
   guideTitle: string;
   guideSubtitle: string;
@@ -167,14 +191,19 @@ export interface TranslationPack {
   summaryStartNextDay: (nextDay: number) => string;
   // Archive tab
   profileSubtitle: string;
+  basicInfoTitle: string;
+  codenameLabel: string;
+  codenameValue: string;
+  genderLabel: string;
+  genderValue: string;
+  experienceLabel: string;
+  experienceValue: string;
+  originLabel: string;
+  originValue: string;
   birthdayLabel: string;
   birthdayValue: string;
   heightLabel: string;
   heightValue: string;
-  experienceLabel: string;
-  experienceValue: string;
-  colorsLabel: string;
-  colorsValue: string;
   trustProgressTitle: string;
   trustProgressHint: string;
   lockedArchiveHint: (trust: number) => string;
@@ -269,22 +298,45 @@ export const TRANSLATIONS: Record<Language, TranslationPack> = {
     accountOfflineNotice:
       'SQLite save server is not running on this host—progress is currently kept in your browser.',
     langSwitchTooltip: '切换至简体中文',
+    seasonCycleTooltip: 'Click to preview seasons (Auto follows your local date)',
+    craftingBtn: 'Crafting Table (3×3)',
+    craftingTitle: 'Crafting Table',
+    craftingSubtitle: 'Place apples in the 3×3 grid or click a recipe below to craft.',
+    craftingClearBtn: 'Clear Grid',
+    craftingCraftBtn: 'Craft',
+    craftingEmptyOutput: 'No Match',
+    craftingRecipesHeading: 'Orchard Recipes (Click to Auto-Fill)',
+    craftingIngredientsHeading: 'Your Apples (Click to Select, Then Click a Grid Slot)',
+    craftingHint: 'Walk inside the Cottage to use the 3D Crafting Table, Bed & Chest!',
+    craftingRecipeNames: {
+      cider: 'Apple Cider',
+      pie: 'Golden Apple Pie',
+      appleSeed: 'Crisp Apple Seed',
+      goldenSeed: 'Golden Sapling',
+    },
+    craftingRecipeDescs: {
+      cider: '3 Red Apples in a row',
+      pie: '2 Red + 1 Golden Apple in a row',
+      appleSeed: '1 Red Apple anywhere',
+      goldenSeed: '1 Golden Apple anywhere',
+    },
+    insideCottageLabel: 'Inside Cottage',
     guideBtn: 'Orchard Guidebook',
     guideTitle: "Apple-chan's Orchard Guidebook",
-    guideSubtitle: 'Welcome! Explore the expanded 3D valley, climb hilltop landmarks, and run your cozy orchard.',
+    guideSubtitle: 'Welcome! Explore the seasonal 3D voxel valley, enter your cottage, and craft at the Crafting Table.',
     guideControlsHeading: 'Controls & Exploration',
     guideControlsItems: [
-      { keys: 'WASD / Arrows', desc: 'Walk freely—camera auto-follows Apple-chan across the whole valley' },
-      { keys: 'Space', desc: 'High jump (>1 block) to climb grassy terraces, Windmill Hill, Waterfall & Gazebo' },
-      { keys: 'E', desc: 'Interact with nearby trees, garden plots, shipping bin, shop stall, or cottage door' },
-      { keys: 'Click / Drag', desc: 'Click trees, plots, bin, stall, or door; drag to orbit 360° & scroll to zoom' },
-      { keys: 'H', desc: 'Hide or show the bottom icon dock anytime' },
+      { keys: 'WASD / Arrows', desc: 'Walk freely—camera auto-follows Apple-chan, even inside your Cottage!' },
+      { keys: 'Space', desc: 'High jump (>1 block) to climb grassy/snowy terraces, Windmill Hill & Waterfall' },
+      { keys: 'E', desc: 'Interact with nearby trees, garden plots, Crafting Table, Bed, Chest, or Shop' },
+      { keys: 'Click / Drag', desc: 'Click trees, plots, interior Crafting Table/Bed/Chest; drag to orbit 360°' },
+      { keys: 'H', desc: 'Hide or show the bottom Minecraft hotbar dock anytime' },
     ],
     guideFarmHeading: 'Cozy Orchard Life',
     guideFarmSteps: [
       'Hug apple trees to shake down crisp Red & Golden Apples—walk close to magnet-collect them into your Inventory.',
-      'Click the 6 tilled plots in the southeast garden to Plant seeds, Water soil (rain waters them automatically!), and Harvest.',
-      'Open the Backpack icon to view your Inventory & Money, craft Cider & Pies, ship produce, or complete Village Orders.',
+      'Walk right through the Cottage front door! The roof lifts away so you can use the 3D Crafting Table, Bed, and Chest inside.',
+      'Use the Minecraft 3×3 Crafting Table to turn apples into Cider, Golden Pies, or Seeds to plant in the 6 garden plots.',
       'Click the Account icon to register/sign in and persist your orchard to your own personal SQLite database!',
     ],
     guideRushHeading: '60s Golden Harvest Rush',
@@ -381,51 +433,96 @@ export const TRANSLATIONS: Record<Language, TranslationPack> = {
         : 'Remember to plant and water seeds in the garden plots!',
     summaryTotalEarned: 'Total Earned',
     summaryStartNextDay: (nextDay) => `Wake Up · Day ${nextDay}`,
-    profileSubtitle: 'Original character by 70CentsApple · Orchard Keeper',
+    profileSubtitle: 'Original character by 70CentsApple · Official Character Archive',
+    basicInfoTitle: 'Basic · Initially Unlocked',
+    codenameLabel: 'Codename',
+    codenameValue: 'Apple-chan',
+    genderLabel: 'Gender',
+    genderValue: 'Female',
+    experienceLabel: 'Tree Planting Experience',
+    experienceValue: '5 yrs',
+    originLabel: 'Place of Origin',
+    originValue: 'Unknown',
     birthdayLabel: 'Birthday',
     birthdayValue: 'August 7',
     heightLabel: 'Height',
     heightValue: '146 cm',
-    experienceLabel: 'Tree Planting',
-    experienceValue: '5 years',
-    colorsLabel: 'Favorite Colors',
-    colorsValue: 'Grass Green & Sky Blue',
     trustProgressTitle: 'Orchard Trust',
     trustProgressHint:
-      'Hug trees, grow crops, and complete villager orders to unlock all records.',
-    lockedArchiveHint: (trust) => `Reach ${trust}% Trust to unlock`,
+      'Hug trees, grow crops, and complete villager orders to unlock all archive files.',
+    lockedArchiveHint: (trust) => `Have at least ${trust}% Trust with Apple-chan`,
     watchHugBtn: 'Watch Her Hug a Tree',
     archives: [
       {
-        id: 'intro',
+        id: 'profile',
         requiredTrust: 0,
-        title: 'Basic Profile',
-        body: 'Cheerful, independent, and endlessly enthusiastic, Apple-chan reclaimed an overgrown weedy backyard and nurtured it into her own blooming apple orchard. Every tree stands deeply rooted as her family.',
+        title: 'Profile',
+        unlockNote: 'Initially Unlocked',
+        paragraphs: [
+          'Apple-chan is a child who was "abandoned". She loves nature, with a magical touch that seems to bring joy to all plants. She especially enjoys planting trees. Though young, she is skilled in various planting techniques and is an independent, self-reliant girl—truly endearing.',
+        ],
       },
       {
         id: 'file1',
         requiredTrust: 50,
-        title: 'Archive File 1 · Starlit Trunk',
-        body: 'She rarely speaks of loneliness—instead she insists she can care for every single tree by herself, even though a quiet smile appears whenever someone visits her orchard.',
-        poem: '“At the edge of darkness, in the orchard’s heart, leaves rustle, a girl looks up. Starry skies, moonlight sways, leaning on a sturdy trunk, she falls into dream’s embrace.”',
+        title: 'Archive File 1',
+        unlockNote: 'Have at least 50% Trust with Apple-chan',
+        poem: '"At the edge of darkness, in the orchard\'s heart,\nLeaves rustle, a girl looks up.\nStarry skies, moonlight sways,\nLeaning on a sturdy trunk, she falls into dream\'s embrace."',
+        paragraphs: [
+          'Truthfully, Apple-chan is an extraordinary child. She maintains endless enthusiasm for everything she pursues. Perhaps due to innate talent, she learns anything incredibly quickly. Thanks to both her efforts and the support of others, she has mastered many skills and can now sustain herself. Her charm makes the villagers naturally want to help her, but even when everyone swarms around her, she sometimes pouts and complains that she can manage on her own (how cute~). Respecting her wishes, everyone learned to step back and reflect.',
+        ],
       },
       {
         id: 'file2',
         requiredTrust: 100,
-        title: 'Archive File 2 · Village Roots',
-        body: 'Years ago her parents left on a distant journey, trusting the gentle villagers to watch over her. Through seasons of sun and snow, Apple-chan grew strong alongside her saplings.',
+        title: 'Archive File 2',
+        unlockNote: 'Have at least 100% Trust with Apple-chan',
+        paragraphs: [
+          'We may never truly comprehend the inner torment and scars of this girl, whose personality combines both passionate exuberance and deep-seated loneliness. Apple-chan’s origins are shrouded in mystery. It is said her parents embarked on a "never-returning" journey when she was very young. Sounds irresponsible, doesn’t it? But is that the full truth?',
+          'Rumor has it that Apple-chan was born during an "ordinary" trip. Her parents, admired for their virtues, attracted suspicion and envy from local dark forces. Knowing their child would be their greatest vulnerability, they foresaw the inevitable targeting she’d face. Thus, their "ordinary" journey became extraordinary, and what happened afterward remains unknown.',
+          'When a baby girl was found sleeping under a tree, a letter lay beside her, revealing her parents\' names. The villagers, remembering the contributions of her parents and their farewell party, readily offered help.',
+          'Somehow brought back to her parents’ hometown, Apple-chan grew up safe and sound, shielded from deception and social turmoil. She lived in her own little world—both physically and emotionally.',
+        ],
       },
       {
         id: 'file3',
         requiredTrust: 150,
-        title: 'Archive File 3 · Family of Trees',
-        body: 'What began as a single sprout in a forgotten patch of weeds became rows of blossoming boughs, a warm timber cottage, and a wooden footbridge over the singing brook.',
+        title: 'Archive File 3',
+        unlockNote: 'Have at least 150% Trust with Apple-chan',
+        paragraphs: [
+          'The codename "Apple-chan" is one she gave herself. As previously noted, this little girl had no name. Her parents once had a large backyard garden in the village, which used to be a weedy field—now transformed into an apple orchard, Apple-chan’s paradise. She decided to reclaim and manage the entire garden herself. As the apple trees grew, so did her inner strength.',
+          'Every tree now stands tall, deeply rooted in the land. They are her family. It’s no surprise she chose "Apple" as her codename and added the affectionate suffix to become "Apple-chan".',
+          'Apples may be the most common fruit, always listed on juice labels as "concentrated apple juice" (?), quietly providing essential nutrients to humanity. Just like apples, Apple-chan is unassuming yet quietly strives to flourish in her own secluded corner of the world.',
+        ],
       },
       {
         id: 'file4',
         requiredTrust: 200,
-        title: 'Archive File 4 · Green & Sky Blue',
-        body: '“Green like grass, blue like the sky—my two favorite colors!” Having hugged every single tree in her orchard, she watches the distant hot-air balloon drifting on the breeze and whispers: “Can I hug you?”',
+        title: 'Archive File 4',
+        unlockNote: 'Have at least 200% Trust with Apple-chan',
+        paragraphs: [
+          'Still, we cannot ignore Apple-chan’s psychological issues. No matter how perfect the external conditions, she lacks a reliable emotional anchor. Outsiders see her as having an extreme dependency on love—anyone she feels affection for becomes her "lifeline". She clings to them with all her might, refusing to let go.',
+          'From her perspective, perhaps her parents were indeed a bit reckless and irresponsible, leaving her alone. Their absence in early childhood led to her distorted emotional development. It’s likely why she always tries to appear strong and independent in front of others.',
+          'When asked, Apple-chan once said her favorite colors are green and blue.',
+          'Green: the color of grass—no matter how it sways in the storm, it never moves from its roots.',
+          'Blue: the hue of the sky—even the humblest grass yearns for the heavens.',
+          'Don’t forget that hidden deep in her green eyes is a resilient heart, full of unfathomable "little thoughts".',
+        ],
+      },
+      {
+        id: 'promotion',
+        requiredTrust: 200,
+        title: 'Promotion Record',
+        unlockNote: 'Promote Apple-chan to Elite 2 (200% Trust)',
+        paragraphs: [
+          'Apple-chan really loves hugging—so much that she’s hugged every tree in the orchard. Uncle Milk’s waist, the teacher’s arm, even a stray cat’s belly—she’s hugged them all. And each time, the recipient freezes up, because she hugs so tightly, as if trying to merge into their bones.',
+          '"I\'m sorry…" she always says afterward, blushing like a ripe apple, "I forgot not everyone is as sturdy as an apple tree."',
+          'Then one day, a new art teacher knelt down and said to her: "You can ask \'Can I hug you?\' first, after which, we can all get our hearts ready."',
+          '…',
+          'That day, the final apple tree in the orchard bloomed. Colored specks filled the sky above the village. As the hot air balloon landed in the flowering orchard, the first thing Apple-chan did was open her arms—then come to a halt.',
+          'A couple stepped off the deck. When she was 7, Apple-chan received a letter from her parents, with a photo attached. She remembered now—the clothes in the photo perfectly matched those of the people in front of her.',
+          '"Can I… hug you?" she asked softly. The girl stepped forward and wrapped her arms around her parents. And those parents, embraced tightly, realized that what was often called "too strong" a hug was actually just strong enough to synchronize the beats of three hearts.',
+        ],
       },
     ],
     quotes: {
@@ -558,23 +655,46 @@ export const TRANSLATIONS: Record<Language, TranslationPack> = {
     accountOfflineNotice:
       '当前主机未运行 SQLite 后端服务，游戏进度暂存于浏览器本地。',
     langSwitchTooltip: 'Switch to English',
+    seasonCycleTooltip: '点击可切换预览四季景观（默认自动同步本地日期）',
+    craftingBtn: '工作台合成 (3×3)',
+    craftingTitle: '合成工作台',
+    craftingSubtitle: '像 Minecraft 一样在 3×3 格子中摆放苹果，或直接点击下方配方一键填充。',
+    craftingClearBtn: '清空',
+    craftingCraftBtn: '合成',
+    craftingEmptyOutput: '无匹配配方',
+    craftingRecipesHeading: '果园合成表（点击自动摆放）',
+    craftingIngredientsHeading: '背包材料（先点击选择材料，再点击上方 3×3 格子）',
+    craftingHint: '直接走近木屋门即可进入室内，使用 3D 工作台、床铺和储物箱！',
+    craftingRecipeNames: {
+      cider: '鲜酿苹果酒',
+      pie: '黄金苹果派',
+      appleSeed: '脆甜苹果种子',
+      goldenSeed: '金苹果幼苗',
+    },
+    craftingRecipeDescs: {
+      cider: '横向 3 颗红苹果',
+      pie: '横向 2 颗红苹果 + 1 颗金苹果',
+      appleSeed: '任意格 1 颗红苹果',
+      goldenSeed: '任意格 1 颗金苹果',
+    },
+    insideCottageLabel: '木屋室内',
     guideBtn: '游玩指南',
     guideTitle: '果酱的苹果园 · 游玩指南',
-    guideSubtitle: '欢迎来到全新的广阔 3D 山谷果园！攀登风车山丘、欣赏实时天色与天气吧。',
+    guideSubtitle: '欢迎来到四季变幻的 3D 体素苹果园！走进木屋使用工作台合成物品吧。',
     guideControlsHeading: '基础操作',
     guideControlsItems: [
-      { keys: 'WASD / 方向键', desc: '自由漫步——移动时镜头会自动居中跟随果酱' },
-      { keys: 'Space 空格', desc: '高跳（超过 1 格高），轻松攀登阶梯草坡、山顶风车、瀑布崖与篝火台' },
-      { keys: 'E 键', desc: '快捷互动：抱抱附近的苹果树、照料种植田、打开出货箱/小铺或回木屋过夜' },
-      { keys: '鼠标点击 / 拖拽', desc: '点击苹果树、田地、出货箱、小铺或木屋门；拖拽360°旋转视角，滚轮缩放' },
-      { keys: 'H 键', desc: '随时收起或展开底部图标控制栏' },
+      { keys: 'WASD / 方向键', desc: '自由漫步——移动时镜头自动跟随果酱，可直接走进木屋内部' },
+      { keys: 'Space 空格', desc: '高跳（超过 1 格高），轻松攀登四季阶梯草坡/雪坡、风车山丘与瀑布崖' },
+      { keys: 'E 键', desc: '快捷互动：抱抱苹果树、照料田地、使用室内工作台/床铺/储物箱或小铺' },
+      { keys: '鼠标点击 / 拖拽', desc: '点击树、田地、室内工作台/床铺/箱子；拖拽 360° 旋转视角，滚轮缩放' },
+      { keys: 'H 键', desc: '随时收起或展开底部快捷栏' },
     ],
     guideFarmHeading: '田园经营日常',
     guideFarmSteps: [
       '拥抱苹果树可摇落红苹果与金苹果，靠近自动吸入背包。',
-      '点击东南角 6 块种植田可播种、浇水（下雨天会自动帮田地浇湿哦！）并采收成熟果实。',
-      '点击右上角背包图标查看果酱的物品与金币、酿造苹果酒与黄金苹果派，或放进出货箱卖金币。',
-      '点击右上角账号图标注册/登录，即可把你的果园进度持久化到个人专属 SQLite 数据库！',
+      '直接走向木屋大门即可推门进入室内！屋顶会自动掀开，可点击室内的工作台、床铺与储物箱。',
+      '在 3×3 工作台用苹果合成苹果酒、黄金苹果派，或直接把苹果分解成种子种进 6 块农田！',
+      '点击右上角账号图标注册/登录，即可把果园进度持久化到个人专属 SQLite 数据库！',
     ],
     guideRushHeading: '60 秒黄金采摘挑战',
     guideRushDesc:
@@ -669,50 +789,95 @@ export const TRANSLATIONS: Record<Language, TranslationPack> = {
         : '记得在东南角的种植田里播下种子并浇水哦！',
     summaryTotalEarned: '今日总收入',
     summaryStartNextDay: (nextDay) => `迎接第 ${nextDay} 天清晨`,
-    profileSubtitle: '原创角色 by 70CentsApple · 苹果园守护者',
+    profileSubtitle: '原创角色 by 七毛钱的苹果 (70CentsApple) · 官方角色档案',
+    basicInfoTitle: '基础档案 · 初始开放',
+    codenameLabel: '代号',
+    codenameValue: '果酱',
+    genderLabel: '性别',
+    genderValue: '女',
+    experienceLabel: '种树经验',
+    experienceValue: '5年',
+    originLabel: '出身地',
+    originValue: '未知',
     birthdayLabel: '生日',
     birthdayValue: '8月7日',
     heightLabel: '身高',
-    heightValue: '146 cm',
-    experienceLabel: '种树经验',
-    experienceValue: '5年',
-    colorsLabel: '最喜欢的颜色',
-    colorsValue: '草绿色 & 天蓝色',
+    heightValue: '146cm',
     trustProgressTitle: '果园信赖度',
-    trustProgressHint: '抱苹果树、种田收获、完成村民委托都能提升信赖并解锁档案！',
-    lockedArchiveHint: (trust) => `信赖度达到 ${trust}% 解锁`,
+    trustProgressHint: '抱苹果树、种田收获、完成村民委托都能提升信赖并解锁全部档案！',
+    lockedArchiveHint: (trust) => `提升信赖至${trust}%以查看更多信息`,
     watchHugBtn: '看她去抱苹果树',
     archives: [
       {
-        id: 'intro',
+        id: 'profile',
         requiredTrust: 0,
-        title: '基础资料',
-        body: '开朗、独立又充满元气的果酱，把后院杂草丛生的荒地一点点开垦成了繁花似锦的苹果园。在她眼里，每一棵深深扎根的苹果树都是无可替代的家人。',
+        title: '客观履历',
+        unlockNote: '初始开放',
+        paragraphs: [
+          '果酱，一个「被抛弃」的孩子。她热爱自然，指尖仿佛有让一切植物开心的能力。果酱尤其喜欢植树，虽然她年纪不大，但是熟练掌握各种种树技巧，是一个独立自主、自力更生的女孩，惹人怜爱。',
+        ],
       },
       {
         id: 'file1',
         requiredTrust: 50,
-        title: '档案资料一 · 星空与树干',
-        body: '嘴上总说“一个人也能照料好整片果园”，但每当有朋友来做客，她眼底藏不住的欢喜总会在微风里悄悄漾开。',
-        poem: '“黑暗边缘，果园中央，枝叶沙沙作响，少女仰望天空。星河闪烁，月光轻摇，倚靠着结实的树干，她坠入温柔的梦乡。”',
+        title: '档案资料1',
+        unlockNote: '提升信赖至50%以查看更多信息',
+        poem: '「黑暗边缘，果园中央。枝叶沙沙作响，少女抬头望。\n漫天星野，月光婆娑。背靠粗壮树干，倚树入梦乡。」',
+        paragraphs: [
+          '说实话，果酱真是一个了不起的孩子。她永葆对所追求之事的无尽热情。可能可以被解释为「天赋异禀」，果酱无论学什么都能极快掌握。在各位的帮助同自己的努力下，果酱学会了很多，也有充足能力养活自己。惹人怜爱的果酱使得乡民无不自愿供给她力所能及的帮助，但果酱在众人围着她团团转的时候也曾嘟起嘴，苦恼地表示她自己也能做（超可爱的~）。于是，各位便尊重小女孩的意愿，反思自己，不再插手涉足过深。',
+        ],
       },
       {
         id: 'file2',
         requiredTrust: 100,
-        title: '档案资料二 · 村庄的守护',
-        body: '多年前父母踏上远行，善良的村民们一直温柔照料着年幼的她。在四季流转中，果酱和亲手种下的小树苗一起慢慢长大、变得坚强。',
+        title: '档案资料2',
+        unlockNote: '提升信赖至100%以查看更多信息',
+        paragraphs: [
+          '我们恐怕永远无法想象，眼前这个拥有着集热烈奔放与孤僻无度于一体之性格的女孩子，内心里究竟遭受过何等的撕裂与创伤。果酱的出身很神秘。据传，在果酱小的时候，她的父母就踏上了「永不归来」的征途。看起来挺不负责任的，不是吗？但真相果真如此吗？',
+          '有流言说，果酱的父母是在一场「普通」的旅行中生下她的。在生下她之前，果酱的父母在暂居地积累了不少美德，也迎来了当地原生黑暗势力的猜疑与嫉妒。他们如何会不清楚这一点？他们深知这个孩子将会是他们最软最软的软肋。把孩子生下来，迎接她的只会是针对、针对与无数的针对。「普通」的旅行开始变得「不普通」，而后面的故事我们无从得知。',
+          '当人们发现襁褓中的小女孩在树荫里沉睡时，她的身边躺着一封信，信中指示着这个女孩父母的芳名。老乡们仍铭记着当初果酱父母为故乡所做的巨大贡献，也回忆起当初他们远行时全村人为他们饯别的情景。面对眼前的幼女，乡民们无不主动伸出援手。',
+          '不知怎么就被运回故乡的果酱从结果上看当然是十分安全的，她父母的计划也很奏效。没有所谓尔虞我诈波及她的成长，也无各类社交纷争威胁她的生命——她活在自己渺小的一方故土，更活在自己的世界里。',
+        ],
       },
       {
         id: 'file3',
         requiredTrust: 150,
-        title: '档案资料三 · 苹果树之家',
-        body: '从杂草地里冒出的第一株嫩芽开始，如今这里已经有了成排挂满果实的大树、冒着炊烟的小木屋，以及跨过潺潺小溪的橡木拱桥。',
+        title: '档案资料3',
+        unlockNote: '提升信赖至150%以查看更多信息',
+        paragraphs: [
+          '「果酱」这一昵称是她自己取的，正如我们前文记载，这个小女孩没有名字。她的父母在这个村落的故居有个面积不小的后花园，曾经是杂草丛生的荒地，而现在是一片苹果园，是果酱的乐园。她曾自主决定开荒改造，并亲自打理整个园圃。从小树苗开始，果树生长，果酱的内心也一同成长、顽强。',
+          '树林中的每一棵果树如今都坚挺地立于这方土地之上，扎根于土地深处。每一棵果树都是这个小女孩的家人，也难怪她会挑选「苹果」作为自己代号，再加上一个亲和力满分的后缀构成自己的称呼「果酱」（Apple-chan）。',
+          '苹果，或许是世间最平凡的水果，无论在什么果汁饮料的配料表里总会赫然印着「浓缩苹果汁」的字样（？），无私地为人类提供着各类营养物质。或许同苹果一样，果酱虽无比平凡，却也愿在阴暗一隅里独善其身。',
+        ],
       },
       {
         id: 'file4',
         requiredTrust: 200,
-        title: '档案资料四 · 草绿与天蓝',
-        body: '“草地一样的绿色，天空一样的蓝色——是我最喜欢的两种颜色！”拥抱过果园里每一棵树的少女望着远方飘过天际的热气球，轻声问道：“我可以抱抱你吗？”',
+        title: '档案资料4',
+        unlockNote: '提升信赖至200%以查看更多信息',
+        paragraphs: [
+          '但我们仍然不能忽视的是果酱的心理问题。纵使外部条件再完美，其内心仍然缺乏牢靠的依托对象。在外人看来，她有着可怖的「极端恋爱脑」，任何她有好感的对象都会被试作救命稻草，她会不顾一切代价地接近你、贴住你，死命地抓住你不放。',
+          '好吧，从她的病态心理视角看，果酱的父母也确实有点儿任性不负责了，不能算没有罪过。幼儿期果酱父母的缺席直接促成了她心灵的畸形发展，或许也正因如此，她在别人面前总是试图表现得坚强而独立。',
+          '果酱在面对他人提问时曾袒露说，她最喜欢的颜色是绿色和蓝色。',
+          '绿色：草地的颜色，风雨中的小草再摇曳，终不会移动一寸远；',
+          '蓝色：苍穹之色彩，虽为草芥一株，也向往追求蓝天。',
+          '不要忘了，在绿眸深处种着一颗顽强的心，无时无刻不在激发着你永远猜不透的「小心思」。',
+        ],
+      },
+      {
+        id: 'promotion',
+        requiredTrust: 200,
+        title: '晋升记录',
+        unlockNote: '提升至精英阶段2以查看更多信息（200%信赖解锁）',
+        paragraphs: [
+          '果酱确实太喜欢抱人了，甚至果园中的每一棵树都曾被她热情地拥抱过。还有牛奶叔叔的腰、学校老师的胳膊、甚至流浪猫的肚子……被她抱住的人总会僵住，因为这个孩子用的力气实在太大，像要把自己嵌进对方骨头里。',
+          '「对不起，」她每次都会害羞地道歉，脸红得简直就是一个熟透的红苹果，「我忘记不是所有人都和果树一样结实了。」',
+          '直到有一天，新来的绘画老师蹲下来对她说：「你可以先问『能抱抱吗』，这样我们都能准备好心跳。」',
+          '……',
+          '那天，果园里的最后一棵苹果树开花了，村庄上空出现了彩色斑点。当热气球降落在繁花盛开的果园里时，果酱做的第一件事是——张开手臂，然后突然停住。',
+          '甲板上下来了一对夫妇。七岁那年，果酱曾经收到过一封来自父母的信，信的最后附着一张照片。她想起来了，照片显示着和眼前的人一样的着装。',
+          '「可以……抱抱吗？」她小声问。女孩向前迈步，把父母用手包围。被紧紧搂住的父母发现，这个总被说「太用力」的拥抱，其实刚好能把三颗心的心跳调整成相同的频率。',
+        ],
       },
     ],
     quotes: {

@@ -17,6 +17,7 @@ import {
   Flame,
   Flower2,
   Globe,
+  Hammer,
   Hand,
   Heart,
   HelpCircle,
@@ -50,6 +51,7 @@ import {
   AppleChanAction,
   AppleChanOutfit,
   CameraPreset,
+  CraftingRecipeId,
   CropId,
   FarmState,
   JournalTab,
@@ -60,18 +62,21 @@ import {
   ProduceId,
   RealTimeInfo,
   RushState,
+  Season,
   SpeechMessage,
   TimeMode,
   WeatherInfo,
   WeatherKind,
 } from '../scene/types';
 import { AccountModal } from './AccountModal';
+import { CraftingModal } from './CraftingModal';
 import { IconTooltipButton } from './IconTooltipButton';
 
 interface OrchardHUDProps {
   language: Language;
   timeMode: TimeMode;
   realTime: RealTimeInfo;
+  activeSeason: Season;
   weather: WeatherInfo;
   outfit: AppleChanOutfit;
   cameraPreset: CameraPreset | null;
@@ -85,12 +90,14 @@ interface OrchardHUDProps {
   guideOpen: boolean;
   journalOpen: boolean;
   journalTab: JournalTab;
+  craftingOpen: boolean;
   accountOpen: boolean;
   session: PlayerSession | null;
   backendAvailable: boolean;
   savingAccount: boolean;
   saveToast: string | null;
   onLanguageToggle: () => void;
+  onCycleSeason: () => void;
   onTimeModeChange: (mode: TimeMode) => void;
   onOutfitChange: (outfit: AppleChanOutfit) => void;
   onCameraPresetChange: (preset: CameraPreset) => void;
@@ -103,6 +110,7 @@ interface OrchardHUDProps {
   onShipItem: (item: ProduceId, count: number) => void;
   onEatProduce: (item: 'redApples' | 'honeyBerries') => void;
   onCraftArtisan: (recipe: 'cider' | 'pie') => void;
+  onCraftRecipe: (recipe: CraftingRecipeId) => void;
   onBuySeed: (crop: CropId) => void;
   onBuyUpgrade: (key: keyof OrchardUpgrades) => void;
   onDeliverOrder: (orderId: string) => void;
@@ -115,6 +123,8 @@ interface OrchardHUDProps {
   onOpenJournal: (tab?: JournalTab) => void;
   onCloseJournal: () => void;
   onSelectJournalTab: (tab: JournalTab) => void;
+  onOpenCrafting: () => void;
+  onCloseCrafting: () => void;
   onOpenAccount: () => void;
   onCloseAccount: () => void;
   onRegister: (username: string, password: string) => Promise<void>;
@@ -134,18 +144,18 @@ function formatClock(seconds: number): string {
 function WeatherGlyph({ kind, isNight }: { kind: WeatherKind; isNight: boolean }) {
   switch (kind) {
     case 'rain':
-      return <CloudRain className="h-3.5 w-3.5 text-[#3A84B8]" />;
+      return <CloudRain className="h-3.5 w-3.5 text-[#3678ad]" />;
     case 'snow':
-      return <CloudSnow className="h-3.5 w-3.5 text-[#7AA7D9]" />;
+      return <CloudSnow className="h-3.5 w-3.5 text-[#6ea8e0]" />;
     case 'storm':
-      return <CloudLightning className="h-3.5 w-3.5 text-[#D48A21]" />;
+      return <CloudLightning className="h-3.5 w-3.5 text-[#c88924]" />;
     case 'cloudy':
-      return <Cloud className="h-3.5 w-3.5 text-[#7A8C9E]" />;
+      return <Cloud className="h-3.5 w-3.5 text-[#6e7b8a]" />;
     default:
       return isNight ? (
-        <Moon className="h-3.5 w-3.5 text-[#F4D078]" />
+        <Moon className="h-3.5 w-3.5 text-[#f2c05c]" />
       ) : (
-        <Sun className="h-3.5 w-3.5 text-[#D48A21]" />
+        <Sun className="h-3.5 w-3.5 text-[#c88924]" />
       );
   }
 }
@@ -164,6 +174,7 @@ export function OrchardHUD({
   language,
   timeMode,
   realTime,
+  activeSeason,
   weather,
   outfit,
   cameraPreset,
@@ -177,12 +188,14 @@ export function OrchardHUD({
   guideOpen,
   journalOpen,
   journalTab,
+  craftingOpen,
   accountOpen,
   session,
   backendAvailable,
   savingAccount,
   saveToast,
   onLanguageToggle,
+  onCycleSeason,
   onTimeModeChange,
   onOutfitChange,
   onCameraPresetChange,
@@ -195,6 +208,7 @@ export function OrchardHUD({
   onShipItem,
   onEatProduce,
   onCraftArtisan,
+  onCraftRecipe,
   onBuySeed,
   onBuyUpgrade,
   onDeliverOrder,
@@ -207,6 +221,8 @@ export function OrchardHUD({
   onOpenJournal,
   onCloseJournal,
   onSelectJournalTab,
+  onOpenCrafting,
+  onCloseCrafting,
   onOpenAccount,
   onCloseAccount,
   onRegister,
@@ -219,30 +235,18 @@ export function OrchardHUD({
   const isNight =
     timeMode === 'night' || (timeMode === 'realtime' && realTime.phase === 'night');
 
-  const surfaceClass = isNight
-    ? 'bg-[#172136]/95 text-[#F2F6FC] border-[#2E4166]'
-    : 'bg-[#FAF6EE]/95 text-[#222B1E] border-[#DDD3BE]';
-
-  const cardBg = isNight
-    ? 'border-[#2A3B5E] bg-[#121B2E]'
-    : 'border-[#E2D8C3] bg-[#F4EEE0]';
-
-  const mutedText = isNight ? 'text-[#9CB0D1]' : 'text-[#5E6856]';
-  const dividerColor = isNight ? 'bg-[#2E4166]' : 'bg-[#DDD3BE]';
-  const segmentedBg = isNight ? 'bg-[#0F1728]' : 'bg-[#EDE5D4]';
-  const activeTab = isNight
-    ? 'bg-[#3C7B52] text-white'
-    : 'bg-[#2F6A40] text-[#FCFBF7]';
-  const inactiveTab = isNight
-    ? 'text-[#B8C7E0] hover:text-white'
-    : 'text-[#4C5846] hover:text-[#1D2619]';
-  const subtleBtn = isNight
-    ? 'bg-[#233252] text-[#E8F0FF] hover:bg-[#2C3F66]'
-    : 'bg-[#ECE4D2] text-[#2B3725] hover:bg-[#E0D5BE]';
+  // Authentic Minecraft Blocky GUI Tokens
+  const panelClass = isNight ? 'mc-panel-dark' : 'mc-panel';
+  const insetClass = isNight ? 'mc-inset-dark' : 'mc-inset';
+  const btnClass = isNight ? 'mc-btn-dark' : 'mc-btn';
+  const hotbarSlot = 'mc-slot-dark text-[#f0f0f0]';
+  const mutedText = isNight ? 'text-[#b5bcc7]' : 'text-[#424242]';
+  const dividerColor = 'bg-black/35';
 
   const comboMult = Math.min(4, 1 + Math.floor(rush.combo / 4));
-  const realSeasonText = t.seasons[realTime.season];
+  const activeSeasonText = t.seasons[activeSeason];
   const energyPct = Math.round((farm.energy / farm.maxEnergy) * 100);
+  const energyBlocks = Math.round((farm.energy / farm.maxEnergy) * 10);
   const totalSeedsOwned =
     farm.inventory.seeds.honeyBerry +
     farm.inventory.seeds.appleSapling +
@@ -266,14 +270,14 @@ export function OrchardHUD({
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between">
-      {/* Top Bar: Real-Time Clock/Weather + Wallet/Energy & Icon-Only Action Cluster */}
-      <header className="flex flex-wrap items-start justify-between gap-2.5 p-3.5 sm:p-5">
-        {/* Top-Left: Title, Real-Time Local Date/Clock, Live Weather, Gold & Energy */}
+      {/* Top Bar: Minecraft Status Block + Minecraft Icon-Only Hotbar Cluster */}
+      <header className="flex flex-wrap items-start justify-between gap-2.5 p-3 sm:p-4">
+        {/* Top-Left: Title, Real-Time Local Date/Clock, Clickable Season, Weather, Gold & Energy */}
         <div
-          className={`pointer-events-auto flex items-center gap-3 rounded-xl border px-3.5 py-2.5 shadow-sm transition-colors duration-200 sm:px-4 ${surfaceClass}`}
+          className={`pointer-events-auto flex items-center gap-3 px-3.5 py-2 sm:px-4 ${panelClass}`}
         >
           <div className="flex flex-col">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
               <h1
                 className="text-base font-bold leading-tight tracking-tight whitespace-nowrap sm:text-lg"
                 style={{ fontFamily: 'var(--font-display)' }}
@@ -281,51 +285,63 @@ export function OrchardHUD({
                 {t.appTitle}
               </h1>
               <span
-                className={`text-xs font-semibold whitespace-nowrap tabular-nums ${
-                  isNight ? 'text-[#9CD4A8]' : 'text-[#2F6A40]'
+                className={`text-xs font-bold whitespace-nowrap tabular-nums ${
+                  isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
                 }`}
                 style={{ fontFamily: 'var(--font-mono)' }}
               >
                 {realTime.dateText} · {realTime.timeText}
               </span>
-              <span className={`text-[11px] font-medium whitespace-nowrap ${mutedText}`}>
-                {realSeasonText}
-              </span>
+              <button
+                type="button"
+                onClick={onCycleSeason}
+                title={t.seasonCycleTooltip}
+                className={`px-1.5 py-0.5 text-[11px] font-bold whitespace-nowrap cursor-pointer ${btnClass}`}
+              >
+                {activeSeasonText}
+              </button>
             </div>
 
             <div
               className={`mt-1 flex flex-wrap items-center gap-2.5 text-xs tabular-nums ${mutedText}`}
               style={{ fontFamily: 'var(--font-mono)' }}
             >
-              <span className="flex items-center gap-1 font-semibold">
+              <span className="flex items-center gap-1 font-bold">
                 <WeatherGlyph kind={weather.kind} isNight={isNight} />
                 <span>
                   {t.weatherNames[weather.kind]}
                   {weather.temperatureC !== null ? ` ${weather.temperatureC}°C` : ''}
                 </span>
               </span>
-              <span aria-hidden="true">·</span>
-              <span className="flex items-center gap-1 font-semibold text-[#C97B18]">
+              <span aria-hidden="true">|</span>
+              <span
+                className={`flex items-center gap-1 font-bold ${
+                  isNight ? 'text-[#f2c05c]' : 'text-[#8a5607]'
+                }`}
+              >
                 <Coins className="h-3.5 w-3.5" />
                 {farm.gold}
                 {t.goldShort}
               </span>
-              <span aria-hidden="true">·</span>
+              <span aria-hidden="true">|</span>
               <span className="flex items-center gap-1.5">
-                <Zap className="h-3 w-3 text-[#3C7B52]" />
-                <span
-                  className={`inline-block h-1.5 w-14 overflow-hidden rounded-full ${
-                    isNight ? 'bg-[#0F1728]' : 'bg-[#E1D8C3]'
-                  }`}
-                >
-                  <span
-                    className={`block h-full rounded-full transition-all duration-200 ${
-                      energyPct <= 20 ? 'bg-[#D64940]' : 'bg-[#4D9E5B]'
-                    }`}
-                    style={{ width: `${energyPct}%` }}
-                  />
+                <Zap className="h-3 w-3 text-[#4f8a36]" />
+                {/* Classic Minecraft segmented XP/Energy bar */}
+                <span className="inline-flex gap-[1px] border border-[#141414] bg-[#1e1e1e] p-[1px]">
+                  {Array.from({ length: 10 }).map((_, idx) => (
+                    <span
+                      key={idx}
+                      className={`block h-2 w-1.5 ${
+                        idx < energyBlocks
+                          ? energyPct <= 20
+                            ? 'bg-[#d64940]'
+                            : 'bg-[#62c938]'
+                          : 'bg-[#363636]'
+                      }`}
+                    />
+                  ))}
                 </span>
-                <span>{farm.energy}</span>
+                <span className="font-bold">{farm.energy}</span>
               </span>
             </div>
           </div>
@@ -335,76 +351,80 @@ export function OrchardHUD({
         {rush.active && (
           <div className="pointer-events-auto order-3 mx-auto flex flex-col items-center sm:order-2">
             <div
-              className={`flex items-center gap-3 rounded-xl border px-4 py-2 shadow-md tabular-nums ${surfaceClass}`}
+              className={`flex items-center gap-3 px-4 py-2 tabular-nums ${panelClass}`}
               style={{ fontFamily: 'var(--font-mono)' }}
             >
               <div className="flex items-center gap-1.5">
                 <Timer
                   className={`h-4 w-4 ${
-                    rush.timeLeft <= 10 ? 'text-[#D64940]' : 'text-[#D48A21]'
+                    rush.timeLeft <= 10 ? 'text-[#c9352b]' : 'text-[#c88924]'
                   }`}
                 />
                 <span
                   className={`text-sm font-bold ${
-                    rush.timeLeft <= 10 ? 'text-[#D64940]' : ''
+                    rush.timeLeft <= 10 ? 'text-[#c9352b]' : ''
                   }`}
                 >
                   {formatClock(rush.timeLeft)}
                 </span>
               </div>
 
-              <div className={`h-4 w-px ${dividerColor}`} aria-hidden="true" />
+              <div className={`h-4 w-0.5 ${dividerColor}`} aria-hidden="true" />
 
-              <div className="text-xs font-semibold">
+              <div className="text-xs font-bold">
                 <span className={mutedText}>{t.rushScoreLabel} </span>
                 <span className="text-sm font-bold">{rush.score}</span>
               </div>
 
               {rush.combo >= 2 && (
                 <>
-                  <div className={`h-4 w-px ${dividerColor}`} aria-hidden="true" />
-                  <div className="text-xs font-bold text-[#D48A21]">
+                  <div className={`h-4 w-0.5 ${dividerColor}`} aria-hidden="true" />
+                  <div className="text-xs font-bold text-[#c88924]">
                     {t.rushComboLabel} {rush.combo} (x{comboMult})
                   </div>
                 </>
               )}
 
-              <div className={`h-4 w-px ${dividerColor}`} aria-hidden="true" />
+              <div className={`h-4 w-0.5 ${dividerColor}`} aria-hidden="true" />
 
-              <div className={`text-xs ${mutedText}`}>
+              <div className={`text-xs font-bold ${mutedText}`}>
                 {t.rushBestLabel} {Math.max(rush.bestScore, rush.score)}
               </div>
             </div>
-            <p
-              className={`mt-1.5 rounded-lg border px-3 py-1 text-center text-xs font-medium shadow-sm ${surfaceClass}`}
-            >
+            <p className={`mt-1.5 px-3 py-1 text-center text-xs font-bold ${panelClass}`}>
               {t.rushBannerHint}
             </p>
           </div>
         )}
 
-        {/* Top-Right: Icon-Only Action Cluster with Hover / Tap Tooltips */}
-        <div
-          className={`pointer-events-auto order-2 flex items-center gap-1.5 rounded-xl border p-1.5 shadow-sm transition-colors duration-200 sm:order-3 ${surfaceClass}`}
-        >
+        {/* Top-Right: Minecraft Dark Hotbar Action Cluster (Icon-Only + Dark-Purple Tooltips) */}
+        <div className="mc-hotbar pointer-events-auto order-2 flex items-center gap-1 p-1.5 sm:order-3">
           <IconTooltipButton
             tooltip={t.inventoryBtn}
             placement="bottom"
-            isNight={isNight}
             badge={totalProduceStored > 0 ? totalProduceStored : null}
             onClick={() => onOpenJournal('bag')}
-            className={subtleBtn}
+            className={hotbarSlot}
           >
             <Backpack className="h-4 w-4" />
           </IconTooltipButton>
 
           <IconTooltipButton
+            tooltip={t.craftingBtn}
+            placement="bottom"
+            active={craftingOpen}
+            onClick={onOpenCrafting}
+            className="mc-btn-gold"
+          >
+            <Hammer className="h-4 w-4" />
+          </IconTooltipButton>
+
+          <IconTooltipButton
             tooltip={t.journalBtn}
             placement="bottom"
-            isNight={isNight}
             badge={readyOrdersCount > 0 ? readyOrdersCount : null}
             onClick={() => onOpenJournal(readyOrdersCount > 0 ? 'orders' : 'shop')}
-            className={subtleBtn}
+            className={hotbarSlot}
           >
             <Store className="h-4 w-4" />
           </IconTooltipButton>
@@ -413,13 +433,8 @@ export function OrchardHUD({
             <IconTooltipButton
               tooltip={t.sleepBtn}
               placement="bottom"
-              isNight={isNight}
               onClick={onSleep}
-              className={
-                isNight
-                  ? 'bg-[#3C7B52] text-white hover:bg-[#316844]'
-                  : 'bg-[#2F6A40] text-white hover:bg-[#265734]'
-              }
+              className="mc-btn-green"
             >
               <BedDouble className="h-4 w-4" />
             </IconTooltipButton>
@@ -428,13 +443,8 @@ export function OrchardHUD({
           <IconTooltipButton
             tooltip={rush.active ? t.rushActiveBtn : t.rushBtn}
             placement="bottom"
-            isNight={isNight}
             onClick={rush.active ? onStopRush : onStartRush}
-            className={
-              rush.active
-                ? 'bg-[#D64940] text-white hover:bg-[#BE3E36]'
-                : 'bg-[#D48A21] text-white hover:bg-[#BC791B]'
-            }
+            className={rush.active ? 'mc-btn-red' : 'mc-btn-gold'}
           >
             <Trophy className="h-4 w-4" />
           </IconTooltipButton>
@@ -442,15 +452,8 @@ export function OrchardHUD({
           <IconTooltipButton
             tooltip={accountTooltip}
             placement="bottom"
-            isNight={isNight}
             onClick={onOpenAccount}
-            className={
-              session
-                ? isNight
-                  ? 'bg-[#2D6242] text-white hover:bg-[#37754F]'
-                  : 'bg-[#2F6A40] text-white hover:bg-[#265734]'
-                : subtleBtn
-            }
+            className={session ? 'mc-btn-green' : hotbarSlot}
           >
             {session ? <UserCheck className="h-4 w-4" /> : <User className="h-4 w-4" />}
           </IconTooltipButton>
@@ -458,9 +461,8 @@ export function OrchardHUD({
           <IconTooltipButton
             tooltip={t.guideBtn}
             placement="bottom"
-            isNight={isNight}
             onClick={onOpenGuide}
-            className={subtleBtn}
+            className={hotbarSlot}
           >
             <HelpCircle className="h-4 w-4" />
           </IconTooltipButton>
@@ -468,25 +470,24 @@ export function OrchardHUD({
           <IconTooltipButton
             tooltip={t.langSwitchTooltip}
             placement="bottom"
-            isNight={isNight}
             onClick={onLanguageToggle}
-            className={subtleBtn}
+            className={hotbarSlot}
           >
             <Globe className="h-4 w-4" />
           </IconTooltipButton>
         </div>
       </header>
 
-      {/* Bottom Zone: Speech Caption + Icon-Only Collapsible Control Dock */}
-      <div className="flex flex-col items-center px-3 pb-3.5 sm:pb-4">
+      {/* Bottom Zone: Speech Banner + Classic Minecraft Hotbar Dock */}
+      <div className="flex flex-col items-center px-3 pb-3 sm:pb-4">
         {speech && (
           <div
             key={speech.id}
-            className={`pointer-events-none mb-2.5 max-w-md rounded-xl border px-4 py-2 text-center text-sm font-medium shadow-sm transition-opacity duration-200 ${surfaceClass}`}
+            className={`pointer-events-none mb-2 max-w-md px-4 py-2 text-center text-sm font-semibold ${panelClass}`}
           >
             <span
-              className={`font-semibold ${
-                isNight ? 'text-[#87D698]' : 'text-[#2F6A40]'
+              className={`font-bold ${
+                isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
               }`}
             >
               {t.speakerName}:
@@ -499,9 +500,8 @@ export function OrchardHUD({
           <IconTooltipButton
             tooltip={dockCollapsed ? t.showControls : t.hideControls}
             placement="top"
-            isNight={isNight}
             onClick={onToggleDock}
-            className={`border shadow-sm ${surfaceClass}`}
+            className="mc-hotbar text-[#f0f0f0]"
           >
             {dockCollapsed ? (
               <ChevronUp className="h-4 w-4" />
@@ -512,21 +512,15 @@ export function OrchardHUD({
         </div>
 
         {!dockCollapsed && (
-          <div
-            className={`pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border px-3 py-2 shadow-md transition-colors duration-200 ${surfaceClass}`}
-          >
+          <div className="mc-hotbar pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 px-2 py-1.5">
             {/* 1. Interactive Farm & Character Actions */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <IconTooltipButton
                 tooltip={t.hugTreeBtn}
                 placement="top"
-                isNight={isNight}
+                active={currentAction === 'hug'}
                 onClick={onHugTree}
-                className={
-                  currentAction === 'hug'
-                    ? 'bg-[#D64940] text-white'
-                    : subtleBtn
-                }
+                className={currentAction === 'hug' ? 'mc-btn-red' : hotbarSlot}
               >
                 <Heart className="h-4 w-4" />
               </IconTooltipButton>
@@ -534,10 +528,9 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.plantBtn}
                 placement="top"
-                isNight={isNight}
                 badge={totalSeedsOwned > 0 ? totalSeedsOwned : null}
                 onClick={onPlantSeed}
-                className={subtleBtn}
+                className={hotbarSlot}
               >
                 <Sprout className="h-4 w-4" />
               </IconTooltipButton>
@@ -545,13 +538,9 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.waterBtn}
                 placement="top"
-                isNight={isNight}
+                active={currentAction === 'water'}
                 onClick={onWaterSaplings}
-                className={
-                  currentAction === 'water'
-                    ? 'bg-[#3A84B8] text-white'
-                    : subtleBtn
-                }
+                className={currentAction === 'water' ? 'mc-btn-blue' : hotbarSlot}
               >
                 <Droplets className="h-4 w-4" />
               </IconTooltipButton>
@@ -559,28 +548,24 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.waveBtn}
                 placement="top"
-                isNight={isNight}
+                active={currentAction === 'wave'}
                 onClick={onWave}
-                className={
-                  currentAction === 'wave'
-                    ? 'bg-[#3C7B52] text-white'
-                    : subtleBtn
-                }
+                className={currentAction === 'wave' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Hand className="h-4 w-4" />
               </IconTooltipButton>
             </div>
 
-            <div className={`hidden h-6 w-px sm:block ${dividerColor}`} aria-hidden="true" />
+            <div className="hidden h-7 w-0.5 bg-white/15 sm:block" aria-hidden="true" />
 
-            {/* 2. Outfit Switcher (Icon-Only) */}
-            <div className={`flex items-center gap-1 rounded-xl p-1 ${segmentedBg}`}>
+            {/* 2. Outfit Switcher */}
+            <div className="flex items-center gap-1">
               <IconTooltipButton
                 tooltip={t.outfits.common}
                 placement="top"
-                isNight={isNight}
+                active={outfit === 'common'}
                 onClick={() => onOutfitChange('common')}
-                className={outfit === 'common' ? activeTab : inactiveTab}
+                className={outfit === 'common' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Shirt className="h-4 w-4" />
               </IconTooltipButton>
@@ -588,9 +573,9 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.outfits.spring}
                 placement="top"
-                isNight={isNight}
+                active={outfit === 'spring'}
                 onClick={() => onOutfitChange('spring')}
-                className={outfit === 'spring' ? activeTab : inactiveTab}
+                className={outfit === 'spring' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Flower2 className="h-4 w-4" />
               </IconTooltipButton>
@@ -598,24 +583,24 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.outfits.idol}
                 placement="top"
-                isNight={isNight}
+                active={outfit === 'idol'}
                 onClick={() => onOutfitChange('idol')}
-                className={outfit === 'idol' ? activeTab : inactiveTab}
+                className={outfit === 'idol' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Sparkles className="h-4 w-4" />
               </IconTooltipButton>
             </div>
 
-            <div className={`hidden h-6 w-px sm:block ${dividerColor}`} aria-hidden="true" />
+            <div className="hidden h-7 w-0.5 bg-white/15 sm:block" aria-hidden="true" />
 
-            {/* 3. Camera Views (Icon-Only) */}
-            <div className={`flex items-center gap-1 rounded-xl p-1 ${segmentedBg}`}>
+            {/* 3. Camera Views */}
+            <div className="flex items-center gap-1">
               <IconTooltipButton
                 tooltip={t.cameras.appleChan}
                 placement="top"
-                isNight={isNight}
+                active={cameraPreset === 'appleChan'}
                 onClick={() => onCameraPresetChange('appleChan')}
-                className={cameraPreset === 'appleChan' ? activeTab : inactiveTab}
+                className={cameraPreset === 'appleChan' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Crosshair className="h-4 w-4" />
               </IconTooltipButton>
@@ -623,9 +608,9 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.cameras.orchard}
                 placement="top"
-                isNight={isNight}
+                active={cameraPreset === 'orchard'}
                 onClick={() => onCameraPresetChange('orchard')}
-                className={cameraPreset === 'orchard' ? activeTab : inactiveTab}
+                className={cameraPreset === 'orchard' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Compass className="h-4 w-4" />
               </IconTooltipButton>
@@ -633,9 +618,9 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.cameras.cottage}
                 placement="top"
-                isNight={isNight}
+                active={cameraPreset === 'cottage'}
                 onClick={() => onCameraPresetChange('cottage')}
-                className={cameraPreset === 'cottage' ? activeTab : inactiveTab}
+                className={cameraPreset === 'cottage' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Home className="h-4 w-4" />
               </IconTooltipButton>
@@ -643,9 +628,9 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.cameras.windmill}
                 placement="top"
-                isNight={isNight}
+                active={cameraPreset === 'windmill'}
                 onClick={() => onCameraPresetChange('windmill')}
-                className={cameraPreset === 'windmill' ? activeTab : inactiveTab}
+                className={cameraPreset === 'windmill' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Wind className="h-4 w-4" />
               </IconTooltipButton>
@@ -653,66 +638,64 @@ export function OrchardHUD({
               <IconTooltipButton
                 tooltip={t.cameras.brook}
                 placement="top"
-                isNight={isNight}
+                active={cameraPreset === 'brook'}
                 onClick={() => onCameraPresetChange('brook')}
-                className={cameraPreset === 'brook' ? activeTab : inactiveTab}
+                className={cameraPreset === 'brook' ? 'mc-btn-green' : hotbarSlot}
               >
                 <Waves className="h-4 w-4" />
               </IconTooltipButton>
             </div>
 
-            <div className={`hidden h-6 w-px sm:block ${dividerColor}`} aria-hidden="true" />
+            <div className="hidden h-7 w-0.5 bg-white/15 sm:block" aria-hidden="true" />
 
-            {/* 4. Real-Time / Lighting & Sound (Icon-Only) */}
-            <div className="flex items-center gap-1.5">
-              <div className={`flex items-center gap-1 rounded-xl p-1 ${segmentedBg}`}>
-                <IconTooltipButton
-                  tooltip={t.times.realtime}
-                  placement="top"
-                  isNight={isNight}
-                  onClick={() => onTimeModeChange('realtime')}
-                  className={timeMode === 'realtime' ? activeTab : inactiveTab}
-                >
-                  <Clock className="h-4 w-4" />
-                </IconTooltipButton>
+            {/* 4. Real-Time / Lighting & Sound */}
+            <div className="flex items-center gap-1">
+              <IconTooltipButton
+                tooltip={t.times.realtime}
+                placement="top"
+                active={timeMode === 'realtime'}
+                onClick={() => onTimeModeChange('realtime')}
+                className={timeMode === 'realtime' ? 'mc-btn-green' : hotbarSlot}
+              >
+                <Clock className="h-4 w-4" />
+              </IconTooltipButton>
 
-                <IconTooltipButton
-                  tooltip={t.times.morning}
-                  placement="top"
-                  isNight={isNight}
-                  onClick={() => onTimeModeChange('morning')}
-                  className={timeMode === 'morning' ? activeTab : inactiveTab}
-                >
-                  <Sun className="h-4 w-4" />
-                </IconTooltipButton>
+              <IconTooltipButton
+                tooltip={t.times.morning}
+                placement="top"
+                active={timeMode === 'morning'}
+                onClick={() => onTimeModeChange('morning')}
+                className={timeMode === 'morning' ? 'mc-btn-green' : hotbarSlot}
+              >
+                <Sun className="h-4 w-4" />
+              </IconTooltipButton>
 
-                <IconTooltipButton
-                  tooltip={t.times.sunset}
-                  placement="top"
-                  isNight={isNight}
-                  onClick={() => onTimeModeChange('sunset')}
-                  className={timeMode === 'sunset' ? activeTab : inactiveTab}
-                >
-                  <Sunset className="h-4 w-4" />
-                </IconTooltipButton>
+              <IconTooltipButton
+                tooltip={t.times.sunset}
+                placement="top"
+                active={timeMode === 'sunset'}
+                onClick={() => onTimeModeChange('sunset')}
+                className={timeMode === 'sunset' ? 'mc-btn-green' : hotbarSlot}
+              >
+                <Sunset className="h-4 w-4" />
+              </IconTooltipButton>
 
-                <IconTooltipButton
-                  tooltip={t.times.night}
-                  placement="top"
-                  isNight={isNight}
-                  onClick={() => onTimeModeChange('night')}
-                  className={timeMode === 'night' ? activeTab : inactiveTab}
-                >
-                  <Moon className="h-4 w-4" />
-                </IconTooltipButton>
-              </div>
+              <IconTooltipButton
+                tooltip={t.times.night}
+                placement="top"
+                active={timeMode === 'night'}
+                onClick={() => onTimeModeChange('night')}
+                className={timeMode === 'night' ? 'mc-btn-green' : hotbarSlot}
+              >
+                <Moon className="h-4 w-4" />
+              </IconTooltipButton>
 
               <IconTooltipButton
                 tooltip={audioEnabled ? t.audioMuteTitle : t.audioPlayTitle}
                 placement="top"
-                isNight={isNight}
+                active={audioEnabled}
                 onClick={onToggleAudio}
-                className={audioEnabled ? activeTab : subtleBtn}
+                className={audioEnabled ? 'mc-btn-green' : hotbarSlot}
               >
                 {audioEnabled ? (
                   <Volume2 className="h-4 w-4" />
@@ -725,36 +708,32 @@ export function OrchardHUD({
         )}
       </div>
 
-      {/* First-Time Welcome & Reopenable Bilingual Help Guidebook Modal */}
+      {/* Minecraft-Style Welcome & Help Guidebook Popup */}
       {guideOpen && (
         <div
-          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
           onClick={onCloseGuide}
         >
           <div
-            className={`flex max-h-[86vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border shadow-xl ${surfaceClass}`}
+            className={`flex max-h-[86vh] w-full max-w-xl flex-col overflow-hidden ${panelClass}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div
-              className={`flex items-start justify-between gap-3 border-b px-6 pt-5 pb-4 ${
-                isNight ? 'border-[#2E4166]' : 'border-[#DDD3BE]'
-              }`}
-            >
+            <div className="flex items-start justify-between gap-3 border-b-2 border-black/25 px-5 pt-4 pb-3">
               <div>
                 <h2
-                  className="text-xl font-bold tracking-tight"
+                  className="text-lg font-bold tracking-tight sm:text-xl"
                   style={{ fontFamily: 'var(--font-display)' }}
                 >
                   {t.guideTitle}
                 </h2>
-                <p className={`mt-1 text-xs ${mutedText}`}>{t.guideSubtitle}</p>
+                <p className={`mt-0.5 text-xs ${mutedText}`}>{t.guideSubtitle}</p>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={onLanguageToggle}
-                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${subtleBtn}`}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold cursor-pointer ${btnClass}`}
                 >
                   <Globe className="h-3.5 w-3.5" />
                   <span>{language === 'en' ? '中文' : 'EN'}</span>
@@ -763,37 +742,27 @@ export function OrchardHUD({
                   type="button"
                   onClick={onCloseGuide}
                   aria-label={t.closeBtn}
-                  className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
-                    isNight ? 'hover:bg-[#253555]' : 'hover:bg-[#EAE1CE]'
-                  }`}
+                  className={`flex h-8 w-8 items-center justify-center cursor-pointer ${btnClass}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <div className="space-y-4 overflow-y-auto px-6 py-5 text-sm">
+            <div className="space-y-4 overflow-y-auto px-5 py-4 text-sm">
               {/* Section 1: Controls & Keybindings */}
               <div>
-                <h3 className="mb-2 text-xs font-bold tracking-wide uppercase opacity-80">
+                <h3 className="mb-2 text-xs font-bold tracking-wide uppercase">
                   {t.guideControlsHeading}
                 </h3>
-                <div
-                  className={`divide-y rounded-xl border ${cardBg} ${
-                    isNight ? 'divide-[#233250]' : 'divide-[#E6DEC9]'
-                  }`}
-                >
+                <div className={`divide-y divide-black/15 ${insetClass}`}>
                   {t.guideControlsItems.map((item) => (
                     <div
                       key={item.keys}
-                      className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-xs"
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
                     >
                       <kbd
-                        className={`rounded-md border px-2 py-0.5 font-semibold whitespace-nowrap ${
-                          isNight
-                            ? 'border-[#334870] bg-[#18243D] text-[#E8F0FF]'
-                            : 'border-[#D5C9B0] bg-[#FAF6EE] text-[#283323]'
-                        }`}
+                        className={`px-2 py-0.5 font-bold whitespace-nowrap ${btnClass}`}
                         style={{ fontFamily: 'var(--font-mono)' }}
                       >
                         {item.keys}
@@ -806,16 +775,16 @@ export function OrchardHUD({
                 </div>
               </div>
 
-              {/* Section 2: Cozy Stardew Orchard Loop */}
+              {/* Section 2: Cozy Orchard & Cottage Loop */}
               <div>
-                <h3 className="mb-2 text-xs font-bold tracking-wide uppercase opacity-80">
+                <h3 className="mb-2 text-xs font-bold tracking-wide uppercase">
                   {t.guideFarmHeading}
                 </h3>
-                <ul className={`space-y-2 rounded-xl border p-3.5 text-xs leading-relaxed ${cardBg}`}>
+                <ul className={`space-y-2 p-3 text-xs leading-relaxed ${insetClass}`}>
                   {t.guideFarmSteps.map((step, i) => (
                     <li key={i} className="flex items-start gap-2.5">
                       <span
-                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#2F6A40] text-[10px] font-bold text-white"
+                        className="mc-btn-green mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-[10px] font-bold"
                         style={{ fontFamily: 'var(--font-mono)' }}
                       >
                         {i + 1}
@@ -827,8 +796,8 @@ export function OrchardHUD({
               </div>
 
               {/* Section 3: Harvest Rush */}
-              <div className={`rounded-xl border p-3.5 text-xs leading-relaxed ${cardBg}`}>
-                <div className="mb-1 flex items-center gap-1.5 font-bold text-[#C97B18]">
+              <div className={`p-3 text-xs leading-relaxed ${insetClass}`}>
+                <div className="mb-1 flex items-center gap-1.5 font-bold text-[#c88924]">
                   <Trophy className="h-3.5 w-3.5" />
                   <span>{t.guideRushHeading}</span>
                 </div>
@@ -836,15 +805,11 @@ export function OrchardHUD({
               </div>
             </div>
 
-            <div
-              className={`flex items-center justify-end border-t px-6 py-3.5 ${
-                isNight ? 'border-[#2E4166]' : 'border-[#DDD3BE]'
-              }`}
-            >
+            <div className="flex items-center justify-end border-t-2 border-black/25 px-5 py-3">
               <button
                 type="button"
                 onClick={onCloseGuide}
-                className="rounded-lg bg-[#2F6A40] px-5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#265734] cursor-pointer"
+                className="mc-btn-green px-5 py-2 text-xs font-bold cursor-pointer"
               >
                 {t.guideStartBtn}
               </button>
@@ -853,18 +818,18 @@ export function OrchardHUD({
         </div>
       )}
 
-      {/* Stardew-Style Overnight Shipping Earnings Summary Modal */}
+      {/* Minecraft-Style Overnight Shipping Summary Popup */}
       {farm.pendingSummary && (
         <div
-          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-4"
+          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
           onClick={onDismissSummary}
         >
           <div
-            className={`w-full max-w-md rounded-2xl border p-6 shadow-xl ${surfaceClass}`}
+            className={`w-full max-w-md p-5 ${panelClass}`}
             onClick={(e) => e.stopPropagation()}
           >
             <h2
-              className="text-xl font-bold tracking-tight"
+              className="text-lg font-bold tracking-tight sm:text-xl"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               {t.summaryTitle(
@@ -874,11 +839,7 @@ export function OrchardHUD({
             </h2>
             <p className={`mt-1 text-xs ${mutedText}`}>{t.summarySubtitle}</p>
 
-            <div
-              className={`my-4 space-y-2 border-y py-4 text-sm tabular-nums ${
-                isNight ? 'border-[#2E4166]' : 'border-[#DDD3BE]'
-              }`}
-            >
+            <div className={`my-4 space-y-2 p-3.5 text-sm tabular-nums ${insetClass}`}>
               {PRODUCE_ORDER.filter((k) => farm.pendingSummary!.shipped[k] > 0).length === 0 ? (
                 <p className={`text-xs ${mutedText}`}>{t.summaryNothingShipped}</p>
               ) : (
@@ -887,12 +848,12 @@ export function OrchardHUD({
                   if (qty <= 0) return null;
                   const unit = getSellPrice(k, farm.upgrades.artisanKeg);
                   return (
-                    <div key={k} className="flex items-center justify-between text-xs">
+                    <div key={k} className="flex items-center justify-between text-xs font-semibold">
                       <span>
                         {t.produceNames[k]} × {qty}
                       </span>
                       <span
-                        className="font-semibold text-[#C97B18]"
+                        className="font-bold text-[#c88924]"
                         style={{ fontFamily: 'var(--font-mono)' }}
                       >
                         +{qty * unit}
@@ -903,10 +864,10 @@ export function OrchardHUD({
                 })
               )}
 
-              <div className="flex items-center justify-between pt-2 text-base font-bold">
+              <div className="flex items-center justify-between border-t border-black/20 pt-2 text-base font-bold">
                 <span>{t.summaryTotalEarned}</span>
                 <span
-                  className="text-[#C97B18]"
+                  className="text-[#c88924]"
                   style={{ fontFamily: 'var(--font-mono)' }}
                 >
                   +{farm.pendingSummary.totalGoldEarned}
@@ -915,7 +876,7 @@ export function OrchardHUD({
               </div>
             </div>
 
-            <p className={`mb-5 text-xs ${mutedText}`}>
+            <p className={`mb-4 text-xs ${mutedText}`}>
               {t.summaryCropsGrown(farm.pendingSummary.cropsGrown)}
             </p>
 
@@ -923,7 +884,7 @@ export function OrchardHUD({
               <button
                 type="button"
                 onClick={onDismissSummary}
-                className="rounded-lg bg-[#2F6A40] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#265734] cursor-pointer"
+                className="mc-btn-green px-4 py-2 text-xs font-bold cursor-pointer"
               >
                 {t.summaryStartNextDay(farm.day)}
               </button>
@@ -932,26 +893,26 @@ export function OrchardHUD({
         </div>
       )}
 
-      {/* Harvest Rush End-of-Round Summary Modal */}
+      {/* Minecraft-Style Harvest Rush End-of-Round Summary Popup */}
       {rush.finished && (
         <div
-          className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-black/45 p-4"
+          className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-black/55 p-4"
           onClick={onStopRush}
         >
           <div
-            className={`w-full max-w-sm rounded-2xl border p-6 shadow-xl ${surfaceClass}`}
+            className={`w-full max-w-sm p-5 ${panelClass}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2
-                  className="text-xl font-bold tracking-tight"
+                  className="text-lg font-bold tracking-tight sm:text-xl"
                   style={{ fontFamily: 'var(--font-display)' }}
                 >
                   {t.rushResultTitle}
                 </h2>
                 {rush.isNewRecord && (
-                  <p className="mt-1 text-xs font-semibold text-[#D48A21]">
+                  <p className="mt-1 text-xs font-bold text-[#c88924]">
                     {t.rushNewRecord}
                   </p>
                 )}
@@ -960,19 +921,13 @@ export function OrchardHUD({
                 type="button"
                 onClick={onStopRush}
                 aria-label={t.rushBackCozy}
-                className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
-                  isNight ? 'hover:bg-[#253555]' : 'hover:bg-[#EAE1CE]'
-                }`}
+                className={`flex h-8 w-8 items-center justify-center cursor-pointer ${btnClass}`}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div
-              className={`my-4 grid grid-cols-2 gap-3 border-y py-4 text-sm tabular-nums ${
-                isNight ? 'border-[#2E4166]' : 'border-[#DDD3BE]'
-              }`}
-            >
+            <div className={`my-4 grid grid-cols-2 gap-3 p-3.5 text-sm tabular-nums ${insetClass}`}>
               <div>
                 <span className={`block text-xs ${mutedText}`}>{t.rushScoreLabel}</span>
                 <span className="text-2xl font-bold">{rush.score}</span>
@@ -983,11 +938,11 @@ export function OrchardHUD({
               </div>
               <div>
                 <span className={`block text-xs ${mutedText}`}>{t.rushApplesCollected}</span>
-                <span className="font-semibold">{rush.roundApples}</span>
+                <span className="font-bold">{rush.roundApples}</span>
               </div>
               <div>
                 <span className={`block text-xs ${mutedText}`}>{t.rushGoldCollected}</span>
-                <span className="font-semibold">{rush.roundGolden}</span>
+                <span className="font-bold">{rush.roundGolden}</span>
               </div>
             </div>
 
@@ -995,14 +950,14 @@ export function OrchardHUD({
               <button
                 type="button"
                 onClick={onStopRush}
-                className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer ${subtleBtn}`}
+                className={`px-3.5 py-2 text-xs font-bold cursor-pointer ${btnClass}`}
               >
                 {t.rushBackCozy}
               </button>
               <button
                 type="button"
                 onClick={onStartRush}
-                className="flex items-center gap-1.5 rounded-lg bg-[#2F6A40] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#265734] cursor-pointer"
+                className="mc-btn-green flex items-center gap-1.5 px-4 py-2 text-xs font-bold cursor-pointer"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 <span>{t.rushPlayAgain}</span>
@@ -1012,22 +967,18 @@ export function OrchardHUD({
         </div>
       )}
 
-      {/* Unified Stardew-Style Orchard Journal & Game Inventory Modal */}
+      {/* Minecraft-Style Orchard Inventory, Shop, Orders & Archive Popup */}
       {journalOpen && (
         <div
-          className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4"
+          className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
           onClick={onCloseJournal}
         >
           <div
-            className={`flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-xl ${surfaceClass}`}
+            className={`flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden ${panelClass}`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header + Tabs */}
-            <div
-              className={`border-b px-5 pt-5 pb-3 ${
-                isNight ? 'border-[#2E4166]' : 'border-[#DDD3BE]'
-              }`}
-            >
+            {/* Header + Minecraft Blocky Tabs */}
+            <div className="border-b-2 border-black/25 px-5 pt-4 pb-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-baseline gap-3">
                   <h2
@@ -1037,7 +988,9 @@ export function OrchardHUD({
                     {t.journalTitle}
                   </h2>
                   <span
-                    className="text-xs font-bold text-[#C97B18] tabular-nums"
+                    className={`text-xs font-bold tabular-nums ${
+                      isNight ? 'text-[#f2c05c]' : 'text-[#8a5607]'
+                    }`}
                     style={{ fontFamily: 'var(--font-mono)' }}
                   >
                     {farm.gold}
@@ -1048,15 +1001,13 @@ export function OrchardHUD({
                   type="button"
                   onClick={onCloseJournal}
                   aria-label={t.closeBtn}
-                  className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
-                    isNight ? 'hover:bg-[#253555]' : 'hover:bg-[#EAE1CE]'
-                  }`}
+                  className={`flex h-8 w-8 items-center justify-center cursor-pointer ${btnClass}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className={`mt-3 grid grid-cols-4 gap-1 rounded-xl p-1 ${segmentedBg}`}>
+              <div className="mt-3 grid grid-cols-4 gap-1.5">
                 {(
                   [
                     ['bag', Package],
@@ -1069,8 +1020,8 @@ export function OrchardHUD({
                     key={tabId}
                     type="button"
                     onClick={() => onSelectJournalTab(tabId)}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-colors cursor-pointer ${
-                      journalTab === tabId ? activeTab : inactiveTab
+                    className={`flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-bold cursor-pointer ${
+                      journalTab === tabId ? 'mc-btn-green' : btnClass
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -1082,17 +1033,19 @@ export function OrchardHUD({
 
             {/* Scrollable Body */}
             <div className="overflow-y-auto p-5">
-              {/* TAB 1: APPLE-CHAN GAME INVENTORY, WALLET, SEEDS & ARTISAN CRAFTING */}
+              {/* TAB 1: APPLE-CHAN INVENTORY, WALLET, SEEDS & ARTISAN */}
               {journalTab === 'bag' && (
-                <div className="space-y-5">
+                <div className="space-y-4">
                   {/* Wallet & Storage Summary Strip */}
-                  <div className="grid grid-cols-3 gap-2.5">
-                    <div className={`rounded-xl border px-3.5 py-2.5 ${cardBg}`}>
-                      <span className={`block text-[11px] font-medium ${mutedText}`}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className={`px-3 py-2 ${insetClass}`}>
+                      <span className={`block text-[11px] font-bold ${mutedText}`}>
                         {t.inventoryWalletLabel}
                       </span>
                       <span
-                        className="mt-0.5 flex items-center gap-1 text-base font-bold text-[#C97B18] tabular-nums"
+                        className={`mt-0.5 flex items-center gap-1 text-base font-bold tabular-nums ${
+                          isNight ? 'text-[#f2c05c]' : 'text-[#8a5607]'
+                        }`}
                         style={{ fontFamily: 'var(--font-mono)' }}
                       >
                         <Coins className="h-4 w-4" />
@@ -1101,8 +1054,8 @@ export function OrchardHUD({
                       </span>
                     </div>
 
-                    <div className={`rounded-xl border px-3.5 py-2.5 ${cardBg}`}>
-                      <span className={`block text-[11px] font-medium ${mutedText}`}>
+                    <div className={`px-3 py-2 ${insetClass}`}>
+                      <span className={`block text-[11px] font-bold ${mutedText}`}>
                         {t.inventoryTotalItemsLabel}
                       </span>
                       <span
@@ -1113,12 +1066,14 @@ export function OrchardHUD({
                       </span>
                     </div>
 
-                    <div className={`rounded-xl border px-3.5 py-2.5 ${cardBg}`}>
-                      <span className={`block text-[11px] font-medium ${mutedText}`}>
+                    <div className={`px-3 py-2 ${insetClass}`}>
+                      <span className={`block text-[11px] font-bold ${mutedText}`}>
                         {t.inventorySeedsLabel}
                       </span>
                       <span
-                        className="mt-0.5 block text-base font-bold text-[#3C7B52] tabular-nums"
+                        className={`mt-0.5 block text-base font-bold tabular-nums ${
+                          isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
+                        }`}
                         style={{ fontFamily: 'var(--font-mono)' }}
                       >
                         {totalSeedsOwned}
@@ -1128,18 +1083,20 @@ export function OrchardHUD({
 
                   {/* Seed Pouch Inventory */}
                   <div>
-                    <h3 className="mb-2 text-xs font-bold tracking-wide uppercase opacity-80">
+                    <h3 className="mb-1.5 text-xs font-bold tracking-wide uppercase">
                       {t.bagSeedsTitle}
                     </h3>
                     <div className="grid grid-cols-3 gap-2">
                       {CROP_ORDER.map((crop) => (
                         <div
                           key={crop}
-                          className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${cardBg}`}
+                          className={`flex items-center justify-between gap-2 px-2.5 py-2 text-xs ${insetClass}`}
                         >
-                          <span className="truncate font-semibold">{t.cropNames[crop]}</span>
+                          <span className="truncate font-bold">{t.cropNames[crop]}</span>
                           <span
-                            className="font-bold text-[#3C7B52] tabular-nums"
+                            className={`font-bold tabular-nums ${
+                              isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
+                            }`}
                             style={{ fontFamily: 'var(--font-mono)' }}
                           >
                             ×{farm.inventory.seeds[crop]}
@@ -1151,10 +1108,10 @@ export function OrchardHUD({
 
                   {/* Harvest Basket Produce */}
                   <div>
-                    <h3 className="mb-2 text-xs font-bold tracking-wide uppercase opacity-80">
+                    <h3 className="mb-1.5 text-xs font-bold tracking-wide uppercase">
                       {t.bagProduceTitle}
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {PRODUCE_ORDER.map((item) => {
                         const qty = farm.inventory[item];
                         const sellPrice = getSellPrice(item, farm.upgrades.artisanKeg);
@@ -1165,10 +1122,10 @@ export function OrchardHUD({
                         return (
                           <div
                             key={item}
-                            className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 ${cardBg}`}
+                            className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 ${insetClass}`}
                           >
                             <div>
-                              <div className="text-sm font-semibold">
+                              <div className="text-sm font-bold">
                                 {t.produceNames[item]}{' '}
                                 <span
                                   className="ml-1 text-xs font-bold tabular-nums"
@@ -1182,7 +1139,7 @@ export function OrchardHUD({
                                 {t.goldShort}
                                 {farm.upgrades.artisanKeg &&
                                   (item === 'ciderBottles' || item === 'applePies') && (
-                                    <span className="ml-2 font-semibold text-[#C97B18]">
+                                    <span className="ml-2 font-bold text-[#c88924]">
                                       ({t.artisanBonusTag})
                                     </span>
                                   )}
@@ -1195,10 +1152,8 @@ export function OrchardHUD({
                                   type="button"
                                   disabled={!canEat}
                                   onClick={() => onEatProduce(item)}
-                                  className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                                    canEat
-                                      ? `${subtleBtn} cursor-pointer`
-                                      : 'opacity-40 cursor-not-allowed'
+                                  className={`px-2.5 py-1 text-xs font-bold ${btnClass} ${
+                                    canEat ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'
                                   }`}
                                 >
                                   {t.eatBtn}
@@ -1208,10 +1163,8 @@ export function OrchardHUD({
                                 type="button"
                                 disabled={qty <= 0}
                                 onClick={() => onShipItem(item, 1)}
-                                className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                                  qty > 0
-                                    ? `${subtleBtn} cursor-pointer`
-                                    : 'opacity-40 cursor-not-allowed'
+                                className={`px-2.5 py-1 text-xs font-bold ${btnClass} ${
+                                  qty > 0 ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'
                                 }`}
                               >
                                 {t.shipOneBtn}
@@ -1220,10 +1173,10 @@ export function OrchardHUD({
                                 type="button"
                                 disabled={qty <= 0}
                                 onClick={() => onShipItem(item, qty)}
-                                className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                                className={`px-2.5 py-1 text-xs font-bold ${
                                   qty > 0
-                                    ? 'bg-[#2F6A40] text-white hover:bg-[#265734] cursor-pointer'
-                                    : 'bg-[#2F6A40]/30 text-white/60 cursor-not-allowed'
+                                    ? 'mc-btn-green cursor-pointer'
+                                    : `${btnClass} opacity-40 cursor-not-allowed`
                                 }`}
                               >
                                 {t.shipAllBtn}
@@ -1235,44 +1188,49 @@ export function OrchardHUD({
                     </div>
                   </div>
 
-                  {/* Artisan Crafting */}
+                  {/* Quick Artisan Crafting + Open 3x3 Table Shortcut */}
                   <div>
-                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase opacity-80">
-                      <Flame className="h-3.5 w-3.5 text-[#D48A21]" />
-                      <span>{t.craftTitle}</span>
-                    </h3>
-                    <div className="grid gap-2.5 sm:grid-cols-2">
-                      <div
-                        className={`flex items-center justify-between gap-2 rounded-xl border p-3 ${cardBg}`}
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase">
+                        <Flame className="h-3.5 w-3.5 text-[#c88924]" />
+                        <span>{t.craftTitle}</span>
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCloseJournal();
+                          onOpenCrafting();
+                        }}
+                        className="mc-btn-gold flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold cursor-pointer"
                       >
+                        <Hammer className="h-3 w-3" />
+                        <span>{t.craftingBtn}</span>
+                      </button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className={`flex items-center justify-between gap-2 p-2.5 ${insetClass}`}>
                         <div>
-                          <div className="text-sm font-semibold">
-                            {t.produceNames.ciderBottles}
-                          </div>
-                          <div className={`text-xs ${mutedText}`}>{t.craftRecipes.ciderDesc}</div>
+                          <div className="text-xs font-bold">{t.produceNames.ciderBottles}</div>
+                          <div className={`text-[11px] ${mutedText}`}>{t.craftRecipes.ciderDesc}</div>
                         </div>
                         <button
                           type="button"
                           disabled={farm.inventory.redApples < 3}
                           onClick={() => onCraftArtisan('cider')}
-                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0 transition-colors ${
+                          className={`px-3 py-1.5 text-xs font-bold shrink-0 ${
                             farm.inventory.redApples >= 3
-                              ? 'bg-[#D48A21] text-white hover:bg-[#BC791B] cursor-pointer'
-                              : 'bg-[#D48A21]/30 text-white/60 cursor-not-allowed'
+                              ? 'mc-btn-gold cursor-pointer'
+                              : `${btnClass} opacity-40 cursor-not-allowed`
                           }`}
                         >
                           {t.craftBtn}
                         </button>
                       </div>
 
-                      <div
-                        className={`flex items-center justify-between gap-2 rounded-xl border p-3 ${cardBg}`}
-                      >
+                      <div className={`flex items-center justify-between gap-2 p-2.5 ${insetClass}`}>
                         <div>
-                          <div className="text-sm font-semibold">
-                            {t.produceNames.applePies}
-                          </div>
-                          <div className={`text-xs ${mutedText}`}>{t.craftRecipes.pieDesc}</div>
+                          <div className="text-xs font-bold">{t.produceNames.applePies}</div>
+                          <div className={`text-[11px] ${mutedText}`}>{t.craftRecipes.pieDesc}</div>
                         </div>
                         <button
                           type="button"
@@ -1280,10 +1238,10 @@ export function OrchardHUD({
                             farm.inventory.redApples < 2 || farm.inventory.goldenApples < 1
                           }
                           onClick={() => onCraftArtisan('pie')}
-                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0 transition-colors ${
+                          className={`px-3 py-1.5 text-xs font-bold shrink-0 ${
                             farm.inventory.redApples >= 2 && farm.inventory.goldenApples >= 1
-                              ? 'bg-[#D48A21] text-white hover:bg-[#BC791B] cursor-pointer'
-                              : 'bg-[#D48A21]/30 text-white/60 cursor-not-allowed'
+                              ? 'mc-btn-gold cursor-pointer'
+                              : `${btnClass} opacity-40 cursor-not-allowed`
                           }`}
                         >
                           {t.craftBtn}
@@ -1293,11 +1251,13 @@ export function OrchardHUD({
                   </div>
 
                   {/* Pending Shipping Bin */}
-                  <div className={`rounded-xl border p-3.5 ${cardBg}`}>
+                  <div className={`p-3 ${insetClass}`}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold">{t.shippingBinTitle}</span>
                       <span
-                        className="text-xs font-bold text-[#C97B18] tabular-nums"
+                        className={`text-xs font-bold tabular-nums ${
+                          isNight ? 'text-[#f2c05c]' : 'text-[#8a5607]'
+                        }`}
                         style={{ fontFamily: 'var(--font-mono)' }}
                       >
                         +{pendingShippingValue}
@@ -1313,12 +1273,12 @@ export function OrchardHUD({
 
               {/* TAB 2: ORCHARD SEED & UPGRADE SHOP */}
               {journalTab === 'shop' && (
-                <div className="space-y-5">
+                <div className="space-y-4">
                   <div>
-                    <h3 className="mb-2 text-xs font-bold tracking-wide uppercase opacity-80">
+                    <h3 className="mb-1.5 text-xs font-bold tracking-wide uppercase">
                       {t.shopSeedsTitle}
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {CROP_ORDER.map((crop) => {
                         const price = CROP_SPECS[crop].seedPrice;
                         const owned = farm.inventory.seeds[crop];
@@ -1326,10 +1286,10 @@ export function OrchardHUD({
                         return (
                           <div
                             key={crop}
-                            className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 ${cardBg}`}
+                            className={`flex items-center justify-between gap-3 px-3 py-2 ${insetClass}`}
                           >
                             <div>
-                              <div className="text-sm font-semibold">
+                              <div className="text-sm font-bold">
                                 {t.cropNames[crop]}{' '}
                                 <span
                                   className={`ml-1 text-xs tabular-nums ${mutedText}`}
@@ -1344,10 +1304,10 @@ export function OrchardHUD({
                               type="button"
                               disabled={!canAfford}
                               onClick={() => onBuySeed(crop)}
-                              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold tabular-nums shrink-0 transition-colors ${
+                              className={`px-3 py-1.5 text-xs font-bold tabular-nums shrink-0 ${
                                 canAfford
-                                  ? 'bg-[#2F6A40] text-white hover:bg-[#265734] cursor-pointer'
-                                  : 'bg-[#2F6A40]/30 text-white/60 cursor-not-allowed'
+                                  ? 'mc-btn-green cursor-pointer'
+                                  : `${btnClass} opacity-40 cursor-not-allowed`
                               }`}
                             >
                               {t.buyBtn} · {price}
@@ -1360,10 +1320,10 @@ export function OrchardHUD({
                   </div>
 
                   <div>
-                    <h3 className="mb-2 text-xs font-bold tracking-wide uppercase opacity-80">
+                    <h3 className="mb-1.5 text-xs font-bold tracking-wide uppercase">
                       {t.shopUpgradesTitle}
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {(['copperCan', 'magnetBasket', 'artisanKeg'] as const).map((key) => {
                         const owned = farm.upgrades[key];
                         const price = UPGRADE_PRICES[key];
@@ -1371,18 +1331,18 @@ export function OrchardHUD({
                         return (
                           <div
                             key={key}
-                            className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 ${cardBg}`}
+                            className={`flex items-center justify-between gap-3 px-3 py-2.5 ${insetClass}`}
                           >
                             <div>
-                              <div className="text-sm font-semibold">
-                                {t.upgrades[key].name}
-                              </div>
-                              <div className={`text-xs ${mutedText}`}>
-                                {t.upgrades[key].desc}
-                              </div>
+                              <div className="text-sm font-bold">{t.upgrades[key].name}</div>
+                              <div className={`text-xs ${mutedText}`}>{t.upgrades[key].desc}</div>
                             </div>
                             {owned ? (
-                              <span className="flex items-center gap-1 text-xs font-bold text-[#3C7B52] shrink-0">
+                              <span
+                                className={`flex items-center gap-1 text-xs font-bold shrink-0 ${
+                                  isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
+                                }`}
+                              >
                                 <Check className="h-3.5 w-3.5" />
                                 {t.ownedBtn}
                               </span>
@@ -1391,10 +1351,10 @@ export function OrchardHUD({
                                 type="button"
                                 disabled={!canAfford}
                                 onClick={() => onBuyUpgrade(key)}
-                                className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold tabular-nums shrink-0 transition-colors ${
+                                className={`px-3 py-1.5 text-xs font-bold tabular-nums shrink-0 ${
                                   canAfford
-                                    ? 'bg-[#D48A21] text-white hover:bg-[#BC791B] cursor-pointer'
-                                    : 'bg-[#D48A21]/30 text-white/60 cursor-not-allowed'
+                                    ? 'mc-btn-gold cursor-pointer'
+                                    : `${btnClass} opacity-40 cursor-not-allowed`
                                 }`}
                               >
                                 {t.buyBtn} · {price}
@@ -1411,7 +1371,7 @@ export function OrchardHUD({
 
               {/* TAB 3: VILLAGE NOTICE BOARD DAILY ORDERS */}
               {journalTab === 'orders' && (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   <div>
                     <h3 className="text-sm font-bold">{t.ordersTitle}</h3>
                     <p className={`mt-0.5 text-xs ${mutedText}`}>{t.ordersSubtitle}</p>
@@ -1423,10 +1383,10 @@ export function OrchardHUD({
                     return (
                       <div
                         key={order.id}
-                        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${cardBg}`}
+                        className={`flex flex-wrap items-center justify-between gap-3 p-3.5 ${insetClass}`}
                       >
                         <div>
-                          <div className="text-xs font-semibold opacity-75">
+                          <div className="text-xs font-bold opacity-80">
                             {t.requesters[order.requesterKey]}
                           </div>
                           <div className="mt-0.5 text-sm font-bold">
@@ -1440,7 +1400,7 @@ export function OrchardHUD({
                           </div>
                           <div className={`mt-1 text-xs ${mutedText}`}>
                             {t.rewardLabel}:{' '}
-                            <span className="font-semibold text-[#C97B18]">
+                            <span className="font-bold text-[#c88924]">
                               +{order.rewardGold}
                               {t.goldShort}
                             </span>{' '}
@@ -1449,7 +1409,11 @@ export function OrchardHUD({
                         </div>
 
                         {order.completed ? (
-                          <span className="flex items-center gap-1 text-xs font-bold text-[#3C7B52]">
+                          <span
+                            className={`flex items-center gap-1 text-xs font-bold ${
+                              isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
+                            }`}
+                          >
                             <Check className="h-3.5 w-3.5" />
                             {t.completedTag}
                           </span>
@@ -1458,10 +1422,10 @@ export function OrchardHUD({
                             type="button"
                             disabled={!ready}
                             onClick={() => onDeliverOrder(order.id)}
-                            className={`rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
+                            className={`px-3.5 py-1.5 text-xs font-bold ${
                               ready
-                                ? 'bg-[#2F6A40] text-white hover:bg-[#265734] cursor-pointer'
-                                : 'bg-[#2F6A40]/30 text-white/60 cursor-not-allowed'
+                                ? 'mc-btn-green cursor-pointer'
+                                : `${btnClass} opacity-40 cursor-not-allowed`
                             }`}
                           >
                             {t.deliverBtn}
@@ -1473,36 +1437,51 @@ export function OrchardHUD({
                 </div>
               )}
 
-              {/* TAB 4: APPLE-CHAN FIELD ARCHIVE */}
+              {/* TAB 4: APPLE-CHAN OFFICIAL CHARACTER ARCHIVE */}
               {journalTab === 'archive' && (
                 <div>
-                  <p className={`text-xs ${mutedText}`}>{t.profileSubtitle}</p>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className={`text-xs ${mutedText}`}>{t.profileSubtitle}</p>
+                    <span
+                      className={`text-[11px] font-bold ${
+                        isNight ? 'text-[#89d966]' : 'text-[#2c5c1a]'
+                      }`}
+                    >
+                      {t.basicInfoTitle}
+                    </span>
+                  </div>
                   <div
-                    className={`my-3 grid grid-cols-2 gap-x-6 gap-y-2 border-y py-3.5 text-sm ${
-                      isNight ? 'border-[#2E4166]' : 'border-[#DDD3BE]'
-                    }`}
+                    className={`my-3 grid grid-cols-2 gap-x-5 gap-y-2.5 p-3.5 text-sm sm:grid-cols-3 ${insetClass}`}
                   >
                     <div>
-                      <span className={`block text-xs ${mutedText}`}>{t.birthdayLabel}</span>
-                      <span className="font-semibold">{t.birthdayValue}</span>
+                      <span className={`block text-xs ${mutedText}`}>{t.codenameLabel}</span>
+                      <span className="font-bold">{t.codenameValue}</span>
                     </div>
                     <div>
-                      <span className={`block text-xs ${mutedText}`}>{t.heightLabel}</span>
-                      <span className="font-semibold tabular-nums">{t.heightValue}</span>
+                      <span className={`block text-xs ${mutedText}`}>{t.genderLabel}</span>
+                      <span className="font-bold">{t.genderValue}</span>
                     </div>
                     <div>
                       <span className={`block text-xs ${mutedText}`}>{t.experienceLabel}</span>
-                      <span className="font-semibold tabular-nums">{t.experienceValue}</span>
+                      <span className="font-bold tabular-nums">{t.experienceValue}</span>
                     </div>
                     <div>
-                      <span className={`block text-xs ${mutedText}`}>{t.colorsLabel}</span>
-                      <span className="font-semibold">{t.colorsValue}</span>
+                      <span className={`block text-xs ${mutedText}`}>{t.originLabel}</span>
+                      <span className="font-bold">{t.originValue}</span>
+                    </div>
+                    <div>
+                      <span className={`block text-xs ${mutedText}`}>{t.birthdayLabel}</span>
+                      <span className="font-bold">{t.birthdayValue}</span>
+                    </div>
+                    <div>
+                      <span className={`block text-xs ${mutedText}`}>{t.heightLabel}</span>
+                      <span className="font-bold tabular-nums">{t.heightValue}</span>
                     </div>
                   </div>
 
                   <div className="mb-4">
                     <div className="flex items-baseline justify-between text-xs">
-                      <span className="font-semibold">{t.trustProgressTitle}</span>
+                      <span className="font-bold">{t.trustProgressTitle}</span>
                       <span
                         className="font-bold tabular-nums"
                         style={{ fontFamily: 'var(--font-mono)' }}
@@ -1510,13 +1489,9 @@ export function OrchardHUD({
                         {stats.trustPercent}% / 200%
                       </span>
                     </div>
-                    <div
-                      className={`mt-1.5 h-2 w-full overflow-hidden rounded-full ${
-                        isNight ? 'bg-[#0F1728]' : 'bg-[#E5DCC8]'
-                      }`}
-                    >
+                    <div className="mt-1.5 h-3 w-full border-2 border-[#141414] bg-[#2a2a2a] p-[1px]">
                       <div
-                        className="h-full rounded-full bg-[#3C7B52] transition-all duration-300"
+                        className="h-full bg-[#62c938] transition-all duration-300"
                         style={{
                           width: `${Math.min(100, (stats.trustPercent / 200) * 100)}%`,
                         }}
@@ -1529,10 +1504,14 @@ export function OrchardHUD({
                     {t.archives.map((entry) => {
                       const unlocked = stats.trustPercent >= entry.requiredTrust;
                       return (
-                        <div key={entry.id} className={`rounded-xl border p-3.5 text-sm ${cardBg}`}>
-                          <div className="flex items-center justify-between gap-2">
+                        <div key={entry.id} className={`p-3.5 text-sm ${insetClass}`}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <h3 className="text-xs font-bold tracking-wide">{entry.title}</h3>
-                            {!unlocked && (
+                            {unlocked ? (
+                              <span className={`text-[11px] ${mutedText}`}>
+                                {entry.unlockNote}
+                              </span>
+                            ) : (
                               <span className={`flex items-center gap-1 text-[11px] ${mutedText}`}>
                                 <Lock className="h-3 w-3" />
                                 <span>{t.lockedArchiveHint(entry.requiredTrust)}</span>
@@ -1540,11 +1519,15 @@ export function OrchardHUD({
                             )}
                           </div>
                           {unlocked && (
-                            <div className="mt-1.5 space-y-2 text-xs leading-relaxed">
-                              <p>{entry.body}</p>
+                            <div className="mt-2.5 space-y-2 text-xs leading-relaxed">
                               {entry.poem && (
-                                <p className={`italic ${mutedText}`}>{entry.poem}</p>
+                                <blockquote className="whitespace-pre-line border-l-4 border-[#4f8a36] pl-3 italic opacity-90">
+                                  {entry.poem}
+                                </blockquote>
                               )}
+                              {entry.paragraphs.map((para, idx) => (
+                                <p key={idx}>{para}</p>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -1554,7 +1537,7 @@ export function OrchardHUD({
 
                   <div className="mt-4 flex items-center justify-between gap-2">
                     <span
-                      className={`text-xs tabular-nums ${mutedText}`}
+                      className={`text-xs font-bold tabular-nums ${mutedText}`}
                       style={{ fontFamily: 'var(--font-mono)' }}
                     >
                       {t.hugsLabel} {stats.treesHugged} · {t.rushBestLabel}{' '}
@@ -1567,7 +1550,7 @@ export function OrchardHUD({
                         onCameraPresetChange('appleChan');
                         onHugTree();
                       }}
-                      className="rounded-lg bg-[#2F6A40] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#265734] cursor-pointer"
+                      className="mc-btn-green px-4 py-2 text-xs font-bold cursor-pointer"
                     >
                       {t.watchHugBtn}
                     </button>
@@ -1579,7 +1562,17 @@ export function OrchardHUD({
         </div>
       )}
 
-      {/* Individual Per-User SQLite Save Account Modal */}
+      {/* Minecraft-Style 3x3 Crafting Table Popup */}
+      <CraftingModal
+        open={craftingOpen}
+        language={language}
+        isNight={isNight}
+        farm={farm}
+        onClose={onCloseCrafting}
+        onCraft={onCraftRecipe}
+      />
+
+      {/* Minecraft-Style Individual Per-User SQLite Account Modal */}
       <AccountModal
         open={accountOpen}
         language={language}

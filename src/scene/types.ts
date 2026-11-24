@@ -25,6 +25,8 @@ export type ProduceId =
 
 export type JournalTab = 'bag' | 'shop' | 'orders' | 'archive';
 
+export type CraftingRecipeId = 'cider' | 'pie' | 'appleSeed' | 'goldenSeed';
+
 export interface WeatherInfo {
   kind: WeatherKind;
   temperatureC: number | null;
@@ -145,4 +147,5 @@ export interface SceneCallbacks {
   onCameraPresetClear: () => void;
   onRushStateChange: (rush: RushState) => void;
   onOpenJournalTab: (tab: JournalTab) => void;
+  onOpenCraftingTable: () => void;
 }

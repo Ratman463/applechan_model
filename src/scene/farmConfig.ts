@@ -8,7 +8,9 @@ import {
   ShippingBinLedger,
 } from './types';
 
-export const FARM_STORAGE_KEY = 'applechan_orchard_farm_v1';
+import { getRealSeasonForDate } from '../services/realtimeWeather';
+
+export const FARM_STORAGE_KEY = 'applechan_orchard_farm_v2';
 
 export const CROP_SPECS: Record<
   CropId,
@@ -130,10 +132,10 @@ export function generateDailyOrders(day: number): DailyOrder[] {
 }
 
 export function createInitialFarmState(): FarmState {
-  // Start with 2 cozy planted sprouts + 4 open beds so the garden immediately feels alive!
+  // Start fresh with zero initial stock, empty inventory, and open garden plots
   const plots: FarmPlotState[] = [
-    { id: 0, crop: 'honeyBerry', stage: 1, maxStage: 1, watered: false },
-    { id: 1, crop: 'appleSapling', stage: 1, maxStage: 2, watered: false },
+    { id: 0, crop: null, stage: 0, maxStage: 1, watered: false },
+    { id: 1, crop: null, stage: 0, maxStage: 1, watered: false },
     { id: 2, crop: null, stage: 0, maxStage: 1, watered: false },
     { id: 3, crop: null, stage: 0, maxStage: 1, watered: false },
     { id: 4, crop: null, stage: 0, maxStage: 1, watered: false },
@@ -141,19 +143,19 @@ export function createInitialFarmState(): FarmState {
   ];
   return {
     day: 1,
-    season: 'spring',
-    gold: 60,
+    season: getRealSeasonForDate(new Date()),
+    gold: 0,
     energy: 100,
     maxEnergy: 100,
     inventory: {
-      redApples: 3,
+      redApples: 0,
       goldenApples: 0,
       honeyBerries: 0,
       ciderBottles: 0,
       applePies: 0,
       seeds: {
-        honeyBerry: 2,
-        appleSapling: 1,
+        honeyBerry: 0,
+        appleSapling: 0,
         goldenSapling: 0,
       },
     },

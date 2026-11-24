@@ -35,17 +35,19 @@ const TIMEZONE_COORDS: Record<string, [number, number]> = {
 };
 
 export function getRealSeasonForDate(date: Date, lat = 35): Season {
-  const m = date.getMonth(); // 0 = Jan ... 11 = Dec
+  // Traditional solar-term boundaries (立春 Feb 4, 立夏 May 5, 立秋 Aug 7, 立冬 Nov 7)
+  // so late November (e.g. Nov 24) is properly Winter in the Northern Hemisphere.
+  const mmdd = (date.getMonth() + 1) * 100 + date.getDate();
   const southern = lat < 0;
   if (!southern) {
-    if (m >= 2 && m <= 4) return 'spring';
-    if (m >= 5 && m <= 7) return 'summer';
-    if (m >= 8 && m <= 10) return 'autumn';
+    if (mmdd >= 204 && mmdd < 505) return 'spring';
+    if (mmdd >= 505 && mmdd < 807) return 'summer';
+    if (mmdd >= 807 && mmdd < 1107) return 'autumn';
     return 'winter';
   }
-  if (m >= 8 && m <= 10) return 'spring';
-  if (m === 11 || m <= 1) return 'summer';
-  if (m >= 2 && m <= 4) return 'autumn';
+  if (mmdd >= 807 && mmdd < 1107) return 'spring';
+  if (mmdd >= 1107 || mmdd < 204) return 'summer';
+  if (mmdd >= 204 && mmdd < 505) return 'autumn';
   return 'winter';
 }
 

@@ -43,26 +43,13 @@ export function AccountModal({
   if (!open) return null;
 
   const t = TRANSLATIONS[language];
-  const surfaceClass = isNight
-    ? 'bg-[#172136] text-[#F2F6FC] border-[#2E4166]'
-    : 'bg-[#FAF6EE] text-[#222B1E] border-[#DDD3BE]';
-  const cardBg = isNight
-    ? 'border-[#2A3B5E] bg-[#121B2E]'
-    : 'border-[#E2D8C3] bg-[#F4EEE0]';
-  const mutedText = isNight ? 'text-[#9CB0D1]' : 'text-[#5E6856]';
-  const segmentedBg = isNight ? 'bg-[#0F1728]' : 'bg-[#EDE5D4]';
-  const activeTab = isNight
-    ? 'bg-[#3C7B52] text-white'
-    : 'bg-[#2F6A40] text-[#FCFBF7]';
-  const inactiveTab = isNight
-    ? 'text-[#B8C7E0] hover:text-white'
-    : 'text-[#4C5846] hover:text-[#1D2619]';
+  const panelClass = isNight ? 'mc-panel-dark' : 'mc-panel';
+  const insetClass = isNight ? 'mc-inset-dark' : 'mc-inset';
+  const btnClass = isNight ? 'mc-btn-dark' : 'mc-btn';
+  const mutedText = isNight ? 'text-[#b5bcc7]' : 'text-[#424242]';
   const inputClass = isNight
-    ? 'border-[#334870] bg-[#101829] text-[#F2F6FC] placeholder-[#7B92B8] focus:border-[#5CA371]'
-    : 'border-[#D5C9B0] bg-white text-[#222B1E] placeholder-[#8E9686] focus:border-[#2F6A40]';
-  const subtleBtn = isNight
-    ? 'bg-[#233252] text-[#E8F0FF] hover:bg-[#2C3F66]'
-    : 'bg-[#ECE4D2] text-[#2B3725] hover:bg-[#E0D5BE]';
+    ? 'mc-slot-dark text-[#f4f4f4] placeholder-[#8f98a8] focus:outline-2 focus:outline-white'
+    : 'border-2 border-[#373737] bg-[#e6e6e6] text-[#1c1c1c] placeholder-[#6b6b6b] shadow-[inset_2px_2px_0_#7d7d7d] focus:outline-2 focus:outline-[#4f8a36]';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -88,11 +75,11 @@ export function AccountModal({
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
     >
       <div
-        className={`w-full max-w-md rounded-2xl border p-6 shadow-xl ${surfaceClass}`}
+        className={`w-full max-w-md p-5 ${panelClass}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
@@ -101,7 +88,7 @@ export function AccountModal({
               className="flex items-center gap-2 text-lg font-bold tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              <Database className="h-4 w-4 text-[#3C7B52]" />
+              <Database className="h-4 w-4 text-[#4f8a36]" />
               <span>{t.accountTitle}</span>
             </h2>
             <p className={`mt-1 text-xs leading-relaxed ${mutedText}`}>
@@ -112,32 +99,24 @@ export function AccountModal({
             type="button"
             onClick={onClose}
             aria-label={t.closeBtn}
-            className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
-              isNight ? 'hover:bg-[#253555]' : 'hover:bg-[#EAE1CE]'
-            }`}
+            className={`flex h-8 w-8 items-center justify-center cursor-pointer ${btnClass}`}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {!backendAvailable && (
-          <div
-            className={`mt-4 rounded-xl border px-3.5 py-2.5 text-xs ${
-              isNight
-                ? 'border-[#614D26] bg-[#2B2212] text-[#F5D08A]'
-                : 'border-[#E6CFA0] bg-[#FDF5E4] text-[#7D5611]'
-            }`}
-          >
+          <div className={`mt-4 px-3 py-2 text-xs font-medium ${insetClass}`}>
             {t.accountOfflineNotice}
           </div>
         )}
 
         {session ? (
-          <div className="mt-5 space-y-4">
-            <div className={`space-y-2 rounded-xl border p-4 text-xs ${cardBg}`}>
+          <div className="mt-4 space-y-4">
+            <div className={`space-y-2 p-3.5 text-xs ${insetClass}`}>
               <div className="flex items-center justify-between gap-2">
                 <span className={mutedText}>{t.accountSignedInAs}</span>
-                <span className="flex items-center gap-1.5 text-sm font-bold text-[#3C7B52]">
+                <span className="flex items-center gap-1.5 text-sm font-bold text-[#4f8a36]">
                   <UserCheck className="h-4 w-4" />
                   {session.username}
                 </span>
@@ -158,7 +137,7 @@ export function AccountModal({
             </div>
 
             {saveToast && (
-              <p className="text-xs font-semibold text-[#3C7B52]">{saveToast}</p>
+              <p className="text-xs font-bold text-[#4f8a36]">{saveToast}</p>
             )}
 
             <div className="flex flex-wrap items-center gap-2">
@@ -166,7 +145,7 @@ export function AccountModal({
                 type="button"
                 disabled={saving || !backendAvailable}
                 onClick={() => void onSaveNow()}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2F6A40] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#265734] disabled:opacity-50 cursor-pointer"
+                className="mc-btn-green flex flex-1 items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold disabled:opacity-50 cursor-pointer"
               >
                 <Save className="h-3.5 w-3.5" />
                 <span>{saving ? t.accountSavingLabel : t.accountSaveNowBtn}</span>
@@ -176,7 +155,7 @@ export function AccountModal({
                 type="button"
                 disabled={!backendAvailable}
                 onClick={() => void onDownloadDb()}
-                className={`flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer ${subtleBtn}`}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold disabled:opacity-50 cursor-pointer ${btnClass}`}
               >
                 <Download className="h-3.5 w-3.5" />
                 <span>{t.accountDownloadDbBtn}</span>
@@ -185,7 +164,7 @@ export function AccountModal({
               <button
                 type="button"
                 onClick={onSignOut}
-                className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${subtleBtn}`}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold cursor-pointer ${btnClass}`}
               >
                 <LogOut className="h-3.5 w-3.5" />
                 <span>{t.accountSignOutBtn}</span>
@@ -193,16 +172,16 @@ export function AccountModal({
             </div>
           </div>
         ) : (
-          <form onSubmit={(e) => void handleSubmit(e)} className="mt-5 space-y-4">
-            <div className={`grid grid-cols-2 gap-1 rounded-xl p-1 ${segmentedBg}`}>
+          <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-4">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 onClick={() => {
                   setMode('login');
                   setError(null);
                 }}
-                className={`rounded-lg py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                  mode === 'login' ? activeTab : inactiveTab
+                className={`py-2 text-xs font-bold cursor-pointer ${
+                  mode === 'login' ? 'mc-btn-green' : btnClass
                 }`}
               >
                 {t.accountLoginTab}
@@ -213,8 +192,8 @@ export function AccountModal({
                   setMode('register');
                   setError(null);
                 }}
-                className={`rounded-lg py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                  mode === 'register' ? activeTab : inactiveTab
+                className={`py-2 text-xs font-bold cursor-pointer ${
+                  mode === 'register' ? 'mc-btn-green' : btnClass
                 }`}
               >
                 {t.accountRegisterTab}
@@ -223,7 +202,7 @@ export function AccountModal({
 
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-semibold">
+                <label className="mb-1 block text-xs font-bold">
                   {t.accountUsernameLabel}
                 </label>
                 <input
@@ -235,12 +214,12 @@ export function AccountModal({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={t.accountUsernamePlaceholder}
-                  className={`w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors ${inputClass}`}
+                  className={`w-full px-3 py-2 text-sm outline-none ${inputClass}`}
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold">
+                <label className="mb-1 block text-xs font-bold">
                   {t.accountPasswordLabel}
                 </label>
                 <input
@@ -252,19 +231,19 @@ export function AccountModal({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={t.accountPasswordPlaceholder}
-                  className={`w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors ${inputClass}`}
+                  className={`w-full px-3 py-2 text-sm outline-none ${inputClass}`}
                 />
               </div>
             </div>
 
             {error && (
-              <p className="text-xs font-semibold text-[#D64940]">{error}</p>
+              <p className="text-xs font-bold text-[#c9352b]">{error}</p>
             )}
 
             <button
               type="submit"
               disabled={submitting || !backendAvailable}
-              className="w-full rounded-lg bg-[#2F6A40] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#265734] disabled:opacity-50 cursor-pointer"
+              className="mc-btn-green w-full px-4 py-2.5 text-xs font-bold disabled:opacity-50 cursor-pointer"
             >
               {mode === 'register' ? t.accountRegisterSubmit : t.accountLoginSubmit}
             </button>

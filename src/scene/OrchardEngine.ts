@@ -20,6 +20,7 @@ import { createOrchardTextures, OrchardTextureLibrary } from './textures';
 import {
   AppleChanOutfit,
   CameraPreset,
+  CraftingRecipeId,
   CropId,
   FarmState,
   Language,
@@ -29,6 +30,7 @@ import {
   ProduceId,
   RushState,
   SceneCallbacks,
+  Season,
   TimeMode,
   TimeOfDay,
   WeatherKind,
@@ -226,6 +228,7 @@ export class OrchardEngine {
   private timeMode: TimeMode = 'realtime';
   private realTimeHour = new Date().getHours() + new Date().getMinutes() / 60;
   private weather: WeatherKind = 'clear';
+  private season: Season = 'winter';
   private activeCameraPreset: CameraPreset | null = 'appleChan';
   private autoFocusChar = true;
   private recenterCameraDistance = false;
@@ -489,6 +492,11 @@ export class OrchardEngine {
     this.realTimeHour = ((hourDecimal % 24) + 24) % 24;
   }
 
+  public setSeason(season: Season): void {
+    this.season = season;
+    this.world.setSeason(season);
+  }
+
   public setWeather(weather: WeatherKind): void {
     this.weather = weather;
     this.world.setWeather(weather);
@@ -589,16 +597,24 @@ export class OrchardEngine {
 
   public triggerInteract(): void {
     this.appleChan.getWorldPosition(_charPos);
+    if (this.world.isNearCraftingTable(_charPos.x, _charPos.z)) {
+      this.callbacks.onOpenCraftingTable();
+      return;
+    }
+    if (this.world.isNearCottageBed(_charPos.x, _charPos.z)) {
+      this.sleepAndAdvanceDay();
+      return;
+    }
+    if (this.world.isNearCottageChest(_charPos.x, _charPos.z)) {
+      this.callbacks.onOpenJournalTab('bag');
+      return;
+    }
     if (this.world.isNearShippingBin(_charPos.x, _charPos.z)) {
       this.callbacks.onOpenJournalTab('bag');
       return;
     }
     if (this.world.isNearShopStall(_charPos.x, _charPos.z)) {
       this.callbacks.onOpenJournalTab('shop');
-      return;
-    }
-    if (this.world.isNearCottageDoor(_charPos.x, _charPos.z)) {
-      this.sleepAndAdvanceDay();
       return;
     }
     if (this.world.isNearNursery(_charPos.x, _charPos.z)) {
@@ -809,21 +825,36 @@ export class OrchardEngine {
   }
 
   public craftArtisan(recipe: 'cider' | 'pie'): void {
+    this.craftRecipe(recipe);
+  }
+
+  public craftRecipe(recipe: CraftingRecipeId): boolean {
     const inv = { ...this.farm.inventory, seeds: { ...this.farm.inventory.seeds } };
     if (recipe === 'cider') {
-      if (inv.redApples < 3) return;
+      if (inv.redApples < 3) return false;
       inv.redApples -= 3;
       inv.ciderBottles += 1;
-    } else {
-      if (inv.redApples < 2 || inv.goldenApples < 1) return;
+    } else if (recipe === 'pie') {
+      if (inv.redApples < 2 || inv.goldenApples < 1) return false;
       inv.redApples -= 2;
       inv.goldenApples -= 1;
       inv.applePies += 1;
+    } else if (recipe === 'appleSeed') {
+      if (inv.redApples < 1) return false;
+      inv.redApples -= 1;
+      inv.seeds.appleSapling += 1;
+    } else if (recipe === 'goldenSeed') {
+      if (inv.goldenApples < 1) return false;
+      inv.goldenApples -= 1;
+      inv.seeds.goldenSapling += 1;
+    } else {
+      return false;
     }
     this.updateFarm({ ...this.farm, inventory: inv });
     this.audio.playCheerfulWave();
     this.emitSpeechCategory('crafted');
     this.addProgress({ trustDelta: 6 });
+    return true;
   }
 
   public buySeed(crop: CropId): void {
@@ -1126,8 +1157,12 @@ export class OrchardEngine {
       this.callbacks.onOpenJournalTab('bag');
     } else if (hitData.clickable === 'shopStall') {
       this.callbacks.onOpenJournalTab('shop');
-    } else if (hitData.clickable === 'cottageDoor') {
+    } else if (hitData.clickable === 'craftingTable') {
+      this.callbacks.onOpenCraftingTable();
+    } else if (hitData.clickable === 'cottageBed') {
       this.sleepAndAdvanceDay();
+    } else if (hitData.clickable === 'cottageChest') {
+      this.callbacks.onOpenJournalTab('bag');
     }
   };
 
@@ -1287,6 +1322,12 @@ export class OrchardEngine {
       fogDensity *= 1.24;
     }
 
+    // Crisp winter frosty sky tint when in Winter season
+    if (this.season === 'winter' && this.weather === 'clear') {
+      _dynSky.lerp(_weatherSnowSky, 0.24 * dayAmount);
+      _dynFog.lerp(_weatherSnowSky, 0.28 * dayAmount);
+    }
+
     return {
       sky: _dynSky,
       fog: _dynFog,
@@ -1384,6 +1425,9 @@ export class OrchardEngine {
 
     this.appleChan.update(dt, this.elapsed);
     this.appleChan.getWorldPosition(_charPos);
+
+    // Update enterable cottage swinging door & automatic roof cutaway
+    this.world.updateCottageInterior(_charPos, dt);
 
     // Check collectible red & golden apple magnet pickup -> adds straight to bag!
     const picked = this.world.checkCollectibles(_charPos, dt);

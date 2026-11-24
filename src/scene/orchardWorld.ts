@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { AppleChanTreeTarget } from './appleChan';
 import { OrchardTextureLibrary } from './textures';
-import { FarmPlotState, WeatherKind } from './types';
+import { FarmPlotState, Season, WeatherKind } from './types';
 
 export interface InteractiveTree {
   group: THREE.Group;
@@ -82,6 +82,12 @@ export interface OrchardWorldHandle {
   isNearShippingBin: (x: number, z: number) => boolean;
   isNearShopStall: (x: number, z: number) => boolean;
   isNearCottageDoor: (x: number, z: number) => boolean;
+  isInsideCottage: (x: number, z: number) => boolean;
+  isNearCraftingTable: (x: number, z: number) => boolean;
+  isNearCottageBed: (x: number, z: number) => boolean;
+  isNearCottageChest: (x: number, z: number) => boolean;
+  updateCottageInterior: (charPos: THREE.Vector3, dt: number) => void;
+  setSeason: (season: Season) => void;
   setWeather: (weather: WeatherKind) => void;
   update: (dt: number, elapsed: number, nightFactor: number) => void;
   dispose: () => void;
@@ -590,8 +596,12 @@ export function buildOrchardWorld(
   waterInst.computeBoundingSphere();
   group.add(waterInst);
 
-  // Exact walkable ground height (including both brook bridges and all climbable voxel terraces!)
+  // Exact walkable ground height (including bridges, enterable cottage floor & climbable voxel terraces!)
   const groundHeightAt = (x: number, z: number): number => {
+    // 0. Enterable Orchard Cottage porch & interior wooden floor
+    if (x >= -11.9 && x <= -5.1 && z >= -10.1 && z <= -2.4) {
+      return 0.22;
+    }
     // 1. East Arched Oak Footbridge over the brook: x in [8.2, 13.8], z in [0.4, 2.8]
     if (x >= 8.2 && x <= 13.8 && z >= 0.4 && z <= 2.8) {
       const t = (x - 8.2) / (13.8 - 8.2);
@@ -606,22 +616,45 @@ export function buildOrchardWorld(
     return Math.max(0, h);
   };
 
-  // Expanded playable world bounds (all terraced hills, windmill, gazebo, campfire overlook reachable!)
+  // Expanded playable world bounds (all terraced hills, enterable cottage, windmill, gazebo, campfire overlook reachable!)
   const resolveWalkPosition = (x: number, z: number, out: THREE.Vector2): void => {
     let nx = THREE.MathUtils.clamp(x, -26.5, 26.5);
     let nz = THREE.MathUtils.clamp(z, -26.5, 26.5);
 
-    // Cottage solid footprint around (-8.5, -7.2)
-    if (nx > -12.4 && nx < -4.5 && nz > -10.8 && nz < -3.4) {
-      const dRight = Math.abs(nx - -4.5);
-      const dFront = Math.abs(nz - -3.4);
-      const dLeft = Math.abs(nx - -12.4);
-      const dBack = Math.abs(nz - -10.8);
-      const minD = Math.min(dRight, dFront, dLeft, dBack);
-      if (minD === dFront) nz = -3.4;
-      else if (minD === dRight) nx = -4.5;
-      else if (minD === dLeft) nx = -12.4;
-      else nz = -10.8;
+    // Enterable Orchard Cottage around (-8.5, -7.2) with open front doorway at x in [-9.15, -7.85], z in [-5.25, -3.95]
+    const inDoorway = nx >= -9.15 && nx <= -7.85 && nz >= -5.25 && nz <= -3.95;
+    if (!inDoorway) {
+      const inInteriorRoom = nx > -11.55 && nx < -5.45 && nz > -9.65 && nz < -4.75;
+      if (inInteriorRoom) {
+        nx = THREE.MathUtils.clamp(nx, -11.2, -5.8);
+        nz = THREE.MathUtils.clamp(nz, -9.25, -4.95);
+
+        // Soft furniture footprints inside cottage:
+        // 1) Minecraft Crafting Table at (-10.55, -8.85)
+        if (nx < -9.75 && nz < -8.05) {
+          if (Math.abs(nx - -9.75) < Math.abs(nz - -8.05)) nx = -9.75;
+          else nz = -8.05;
+        }
+        // 2) Minecraft Oak Chest at (-10.55, -6.75)
+        if (nx < -9.75 && nz > -7.5 && nz < -6.0) {
+          nx = -9.75;
+        }
+        // 3) Minecraft Red Bed at (-6.65, -8.75)
+        if (nx > -7.55 && nz < -7.55) {
+          if (Math.abs(nx - -7.55) < Math.abs(nz - -7.55)) nx = -7.55;
+          else nz = -7.55;
+        }
+      } else if (nx > -12.25 && nx < -4.75 && nz > -10.45 && nz < -4.05) {
+        const dRight = Math.abs(nx - -4.75);
+        const dFront = Math.abs(nz - -4.05);
+        const dLeft = Math.abs(nx - -12.25);
+        const dBack = Math.abs(nz - -10.45);
+        const minD = Math.min(dRight, dFront, dLeft, dBack);
+        if (minD === dFront) nz = -4.05;
+        else if (minD === dRight) nx = -4.75;
+        else if (minD === dLeft) nx = -12.25;
+        else nz = -10.45;
+      }
     }
 
     // Windmill tower base solid footprint around (-18, -18)
@@ -918,39 +951,142 @@ export function buildOrchardWorld(
   // =========================================================================
   // 4. APPLE-CHAN'S COZY ORCHARD COTTAGE (Composite 12+ Part Voxel Structure)
   // =========================================================================
+  // Seasonal winter snow caps group (roof snow blankets across the valley)
+  const winterSnowCaps = new THREE.Group();
+  winterSnowCaps.visible = false;
+  group.add(winterSnowCaps);
+
+  const snowBlockMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xf4f8fc,
+      roughness: 0.9,
+      metalness: 0.0,
+    }),
+  );
+
+  // Minecraft Crafting Table, Bed & Interior Materials
+  const craftingTopMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      map: textures.craftingTableTop.map,
+      bumpMap: textures.craftingTableTop.bumpMap,
+      bumpScale: 0.03,
+      roughness: 0.78,
+      metalness: 0.02,
+    }),
+  );
+  const craftingSideMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      map: textures.craftingTableSide.map,
+      bumpMap: textures.craftingTableSide.bumpMap,
+      bumpScale: 0.03,
+      roughness: 0.8,
+      metalness: 0.04,
+    }),
+  );
+  const bedRedMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0xc9352b, roughness: 0.88 }),
+  );
+  const bedPillowMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0xf6f3ea, roughness: 0.9 }),
+  );
+  const rugMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0xb94a3e, roughness: 0.94 }),
+  );
+  const rugTrimMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0xe9c983, roughness: 0.92 }),
+  );
+
+  // Enterable Cottage interactive handles
+  let cottageDoorPivot = new THREE.Group();
+  let cottageRoofGroup = new THREE.Group();
+  let cottageRoofSnowGroup = new THREE.Group();
+  let cottageInteriorLight: THREE.PointLight | null = null;
+  let cottageDoorAngle = 0;
+
   const buildOrchardCottage = (cx: number, cz: number) => {
     const cottage = new THREE.Group();
     const gy = computeOrchardElevation(cx, cz);
     cottage.position.set(cx, gy, cz);
 
-    // Cobblestone foundation (7w x 1h x 6d)
-    const foundation = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(7, 1, 6)),
-      cobbleMat,
+    // 1. Level Oak Plank Floor Slab (top at y = 0.22 so Apple-chan walks right in!)
+    const floorSlab = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(6.9, 0.24, 5.9)),
+      oakPlankMat,
     );
-    foundation.position.set(0, 0.5, 0);
-    foundation.castShadow = true;
-    foundation.receiveShadow = true;
-    cottage.add(foundation);
+    floorSlab.position.set(0, 0.1, 0);
+    floorSlab.receiveShadow = true;
+    cottage.add(floorSlab);
 
-    // Cream plaster main walls (6.6w x 3.2h x 5.6d)
-    const mainWall = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(6.6, 3.2, 5.6)),
-      plasterMat,
+    // Cozy Center Woven Rug on the wooden floor
+    const rugOuter = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(2.6, 0.03, 2.0)),
+      rugTrimMat,
     );
-    mainWall.position.set(0, 2.6, 0);
-    mainWall.castShadow = true;
-    mainWall.receiveShadow = true;
-    cottage.add(mainWall);
+    rugOuter.position.set(0.15, 0.235, -0.2);
+    rugOuter.receiveShadow = true;
+    const rugInner = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(2.2, 0.035, 1.6)),
+      rugMat,
+    );
+    rugInner.position.set(0.15, 0.24, -0.2);
+    rugInner.receiveShadow = true;
+    cottage.add(rugOuter, rugInner);
+
+    // 2. Cobblestone Base Trim around exterior perimeter (split at front doorway!)
+    const baseBack = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(7.0, 0.52, 0.42)), cobbleMat);
+    baseBack.position.set(0, 0.26, -2.75);
+    baseBack.castShadow = true;
+    baseBack.receiveShadow = true;
+    const baseLeft = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.42, 0.52, 5.9)), cobbleMat);
+    baseLeft.position.set(-3.29, 0.26, 0);
+    baseLeft.castShadow = true;
+    baseLeft.receiveShadow = true;
+    const baseRight = baseLeft.clone();
+    baseRight.position.x = 3.29;
+    const baseFrontL = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(2.65, 0.52, 0.42)), cobbleMat);
+    baseFrontL.position.set(-2.16, 0.26, 2.75);
+    baseFrontL.castShadow = true;
+    const baseFrontR = baseFrontL.clone();
+    baseFrontR.position.x = 2.16;
+    cottage.add(baseBack, baseLeft, baseRight, baseFrontL, baseFrontR);
+
+    // 3. Hollow Cream Plaster Perimeter Walls (enterable interior!)
+    const backWall = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(6.8, 3.4, 0.34)), plasterMat);
+    backWall.position.set(0, 2.18, -2.75);
+    backWall.castShadow = true;
+    backWall.receiveShadow = true;
+
+    const leftWall = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.34, 3.4, 5.8)), plasterMat);
+    leftWall.position.set(-3.25, 2.18, 0);
+    leftWall.castShadow = true;
+    leftWall.receiveShadow = true;
+
+    const rightWall = leftWall.clone();
+    rightWall.position.x = 3.25;
+
+    // Front wall split around a 1.7-wide x 2.45-tall open doorway
+    const frontWallL = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(2.55, 3.4, 0.34)), plasterMat);
+    frontWallL.position.set(-2.12, 2.18, 2.75);
+    frontWallL.castShadow = true;
+    frontWallL.receiveShadow = true;
+
+    const frontWallR = frontWallL.clone();
+    frontWallR.position.x = 2.12;
+
+    const frontLintel = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.78, 1.24, 0.34)), plasterMat);
+    frontLintel.position.set(0, 3.26, 2.75);
+    frontLintel.castShadow = true;
+
+    cottage.add(backWall, leftWall, rightWall, frontWallL, frontWallR, frontLintel);
 
     // Four timber corner oak log pillars
-    for (const sx of [-3.25, 3.25]) {
-      for (const sz of [-2.75, 2.75]) {
+    for (const sx of [-3.28, 3.28]) {
+      for (const sz of [-2.78, 2.78]) {
         const post = new THREE.Mesh(
-          trackGeo(new THREE.BoxGeometry(0.62, 3.4, 0.62)),
+          trackGeo(new THREE.BoxGeometry(0.56, 3.9, 0.56)),
           oakLogMats,
         );
-        post.position.set(sx, 2.7, sz);
+        post.position.set(sx, 1.98, sz);
         post.castShadow = true;
         cottage.add(post);
       }
@@ -958,134 +1094,290 @@ export function buildOrchardWorld(
 
     // Horizontal dark-oak timber framing beams
     const frontBeam = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(7.1, 0.32, 0.35)),
+      trackGeo(new THREE.BoxGeometry(7.1, 0.3, 0.36)),
       darkOakMat,
     );
-    frontBeam.position.set(0, 4.2, 2.85);
+    frontBeam.position.set(0, 3.92, 2.82);
     cottage.add(frontBeam);
     const backBeam = frontBeam.clone();
-    backBeam.position.z = -2.85;
+    backBeam.position.z = -2.82;
     cottage.add(backBeam);
 
-    // Stepped Minecraft-style pitched terracotta gable roof
+    // 4. Doorway Frame + Swinging Oak Door (opens automatically as Apple-chan walks up!)
+    const doorJambL = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.18, 2.52, 0.42)), darkOakMat);
+    doorJambL.position.set(-0.85, 1.48, 2.76);
+    const doorJambR = doorJambL.clone();
+    doorJambR.position.x = 0.85;
+    const doorTopBar = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.88, 0.18, 0.42)), darkOakMat);
+    doorTopBar.position.set(0, 2.68, 2.76);
+    cottage.add(doorJambL, doorJambR, doorTopBar);
+
+    cottageDoorPivot = new THREE.Group();
+    cottageDoorPivot.position.set(-0.75, 0.22, 2.76);
+    const doorMesh = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.5, 2.38, 0.14)),
+      oakPlankMat,
+    );
+    doorMesh.position.set(0.75, 1.19, 0);
+    doorMesh.castShadow = true;
+    const doorWindow = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.54, 0.54, 0.17)),
+      windowGlowMat,
+    );
+    doorWindow.position.set(0.75, 1.65, 0);
+    const doorKnobOuter = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.14, 0.14, 0.24)),
+      appleGoldMat,
+    );
+    doorKnobOuter.position.set(1.26, 1.1, 0);
+    cottageDoorPivot.add(doorMesh, doorWindow, doorKnobOuter);
+    cottage.add(cottageDoorPivot);
+
+    // 5. Cutaway Roof Group (hides cleanly when Apple-chan walks inside for a clear dollhouse view!)
+    cottageRoofGroup = new THREE.Group();
+    cottageRoofSnowGroup = new THREE.Group();
+    cottageRoofSnowGroup.visible = false;
+
     for (let step = 0; step < 5; step++) {
       const spanZ = 7.2 - step * 1.25;
+      const ry = 4.18 + step * 0.56;
       const roofRow = new THREE.Mesh(
         trackGeo(new THREE.BoxGeometry(7.8, 0.62, Math.max(1.1, spanZ))),
         roofMat,
       );
-      roofRow.position.set(0, 4.45 + step * 0.56, 0);
+      roofRow.position.set(0, ry, 0);
       roofRow.castShadow = true;
       roofRow.receiveShadow = true;
-      cottage.add(roofRow);
+      cottageRoofGroup.add(roofRow);
+
+      // Winter snow blanket on each roof tier
+      const snowRow = new THREE.Mesh(
+        trackGeo(new THREE.BoxGeometry(7.92, 0.16, Math.max(1.16, spanZ + 0.08))),
+        snowBlockMat,
+      );
+      snowRow.position.set(0, ry + 0.36, 0);
+      cottageRoofSnowGroup.add(snowRow);
     }
-    // Dark oak gable end fill triangles
     for (let step = 0; step < 4; step++) {
       const spanZ = 5.4 - step * 1.25;
       const gable = new THREE.Mesh(
         trackGeo(new THREE.BoxGeometry(6.55, 0.58, Math.max(0.8, spanZ))),
         plasterMat,
       );
-      gable.position.set(0, 4.4 + step * 0.56, 0);
-      cottage.add(gable);
+      gable.position.set(0, 4.14 + step * 0.56, 0);
+      cottageRoofGroup.add(gable);
     }
 
-    // Cozy oak door & timber porch awning facing +Z (toward the orchard path)
-    const doorFrame = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(1.36, 2.25, 0.2)),
-      darkOakMat,
+    // Cobblestone Chimney rising through the roof
+    const chimney = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.1, 3.8, 1.1)),
+      mossyCobbleMat,
     );
-    doorFrame.position.set(0, 2.12, 2.84);
-    cottage.add(doorFrame);
-    const door = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(1.04, 2.02, 0.24)),
-      oakPlankMat,
+    chimney.position.set(-2.1, 5.55, -1.2);
+    chimney.castShadow = true;
+    cottageRoofGroup.add(chimney);
+    const chimneyCap = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.36, 0.26, 1.36)),
+      cobbleMat,
     );
-    door.position.set(0, 2.01, 2.86);
-    cottage.add(door);
-    const doorKnob = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(0.14, 0.14, 0.12)),
-      appleGoldMat,
-    );
-    doorKnob.position.set(0.32, 1.95, 2.98);
-    cottage.add(doorKnob);
+    chimneyCap.position.set(-2.1, 7.5, -1.2);
+    cottageRoofGroup.add(chimneyCap);
 
-    // Front wooden porch steps & deck
+    cottageRoofGroup.add(cottageRoofSnowGroup);
+    cottage.add(cottageRoofGroup);
+
+    // 6. Front Wooden Porch Deck (flush at y = 0.22 with interior floor!) & Awning
     const porchDeck = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(3.4, 0.5, 1.8)),
+      trackGeo(new THREE.BoxGeometry(3.6, 0.24, 1.9)),
       oakPlankMat,
     );
-    porchDeck.position.set(0, 0.25, 3.85);
+    porchDeck.position.set(0, 0.1, 3.85);
     porchDeck.receiveShadow = true;
     cottage.add(porchDeck);
 
-    // Porch posts + overhanging awning
-    for (const px of [-1.5, 1.5]) {
+    for (const px of [-1.55, 1.55]) {
       const pPost = new THREE.Mesh(
-        trackGeo(new THREE.BoxGeometry(0.28, 2.7, 0.28)),
+        trackGeo(new THREE.BoxGeometry(0.28, 2.85, 0.28)),
         oakLogMats,
       );
-      pPost.position.set(px, 1.85, 4.55);
+      pPost.position.set(px, 1.62, 4.55);
       pPost.castShadow = true;
       cottage.add(pPost);
     }
     const porchRoof = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(3.8, 0.35, 2.1)),
+      trackGeo(new THREE.BoxGeometry(3.85, 0.34, 2.15)),
       roofMat,
     );
-    porchRoof.position.set(0, 3.3, 3.85);
-    porchRoof.rotation.x = 0.16;
+    porchRoof.position.set(0, 3.16, 3.85);
+    porchRoof.rotation.x = 0.14;
     porchRoof.castShadow = true;
     cottage.add(porchRoof);
 
+    // Winter snow cap on porch awning
+    const porchSnow = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(3.92, 0.14, 2.2)),
+      snowBlockMat,
+    );
+    porchSnow.position.set(cx, gy + 3.38, cz + 3.85);
+    porchSnow.rotation.x = 0.14;
+    winterSnowCaps.add(porchSnow);
+
     // Warm glowing paned windows + flower boxes
     const windowPositions: [number, number, number, number][] = [
-      [-2.0, 2.55, 2.85, 0],
-      [2.0, 2.55, 2.85, 0],
-      [3.35, 2.55, 0.0, Math.PI / 2],
-      [-3.35, 2.55, 0.0, Math.PI / 2],
+      [-2.12, 2.28, 2.86, 0],
+      [2.12, 2.28, 2.86, 0],
+      [3.36, 2.28, 0.0, Math.PI / 2],
+      [-3.36, 2.28, 0.0, Math.PI / 2],
     ];
     for (const [wx, wy, wz, ry] of windowPositions) {
       const win = new THREE.Mesh(
-        trackGeo(new THREE.BoxGeometry(1.15, 1.15, 0.16)),
+        trackGeo(new THREE.BoxGeometry(1.15, 1.1, 0.16)),
         windowGlowMat,
       );
       win.position.set(wx, wy, wz);
       win.rotation.y = ry;
       cottage.add(win);
 
-      // Flower box under window
       const sill = new THREE.Mesh(
-        trackGeo(new THREE.BoxGeometry(1.3, 0.28, 0.36)),
+        trackGeo(new THREE.BoxGeometry(1.3, 0.26, 0.34)),
         darkOakMat,
       );
-      sill.position.set(wx, wy - 0.72, wz + (ry === 0 ? 0.16 : 0));
+      sill.position.set(wx, wy - 0.68, wz + (ry === 0 ? 0.16 : 0));
       if (ry !== 0) sill.position.x += wx > 0 ? 0.16 : -0.16;
       sill.rotation.y = ry;
       cottage.add(sill);
     }
 
-    // Cobblestone Chimney rising through the roof (emits cozy smoke puffs!)
-    const chimney = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(1.1, 3.8, 1.1)),
-      mossyCobbleMat,
+    // 7. GROUNDED INTERIOR FURNITURE (Minecraft Crafting Table, Red Bed, Oak Chest!)
+    // A) Minecraft 3x3 Crafting Table at local (-2.05, 0.22, -1.65) -> world (-10.55, 0.22, -8.85)
+    const craftingTableMats = [
+      craftingSideMat,
+      craftingSideMat,
+      craftingTopMat,
+      oakPlankMat,
+      craftingSideMat,
+      craftingSideMat,
+    ];
+    const craftingTable = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.0, 1.0, 1.0)),
+      craftingTableMats,
     );
-    chimney.position.set(-2.1, 5.8, -1.2);
-    chimney.castShadow = true;
-    cottage.add(chimney);
-    const chimneyCap = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(1.36, 0.26, 1.36)),
-      cobbleMat,
+    craftingTable.position.set(-2.05, 0.72, -1.65);
+    craftingTable.castShadow = true;
+    craftingTable.receiveShadow = true;
+    cottage.add(craftingTable);
+
+    const craftingHit = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.45, 1.55, 1.45)),
+      trackMat(new THREE.MeshBasicMaterial({ visible: false })),
     );
-    chimneyCap.position.set(-2.1, 7.75, -1.2);
-    cottage.add(chimneyCap);
+    craftingHit.position.set(-2.05, 0.92, -1.65);
+    craftingHit.userData = { clickable: 'craftingTable' };
+    cottage.add(craftingHit);
+    clickables.push(craftingHit);
+
+    // B) Minecraft Oak Storage Chest at local (-2.05, 0.22, 0.45) -> world (-10.55, 0.22, -6.75)
+    const chestGroup = new THREE.Group();
+    chestGroup.position.set(-2.05, 0.22, 0.45);
+    const chestBody = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.92, 0.62, 0.92)),
+      oakPlankMat,
+    );
+    chestBody.position.y = 0.31;
+    chestBody.castShadow = true;
+    const chestLid = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.96, 0.24, 0.96)),
+      darkOakMat,
+    );
+    chestLid.position.y = 0.74;
+    chestLid.castShadow = true;
+    const chestLatch = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.14, 0.22, 0.16)),
+      appleGoldMat,
+    );
+    chestLatch.position.set(0.46, 0.62, 0);
+    chestGroup.add(chestBody, chestLid, chestLatch);
+    cottage.add(chestGroup);
+
+    const chestHit = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.3, 1.3, 1.3)),
+      trackMat(new THREE.MeshBasicMaterial({ visible: false })),
+    );
+    chestHit.position.set(-2.05, 0.75, 0.45);
+    chestHit.userData = { clickable: 'cottageChest' };
+    cottage.add(chestHit);
+    clickables.push(chestHit);
+
+    // C) Minecraft Red Voxel Bed at local (1.85, 0.22, -1.55) -> world (-6.65, 0.22, -8.75)
+    const bedGroup = new THREE.Group();
+    bedGroup.position.set(1.85, 0.22, -1.55);
+    const bedFrame = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.25, 0.32, 2.05)),
+      darkOakMat,
+    );
+    bedFrame.position.y = 0.22;
+    bedFrame.castShadow = true;
+    const bedHeadboard = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.28, 0.72, 0.16)),
+      darkOakMat,
+    );
+    bedHeadboard.position.set(0, 0.48, -0.96);
+    const bedQuilt = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.18, 0.28, 1.35)),
+      bedRedMat,
+    );
+    bedQuilt.position.set(0, 0.46, 0.28);
+    bedQuilt.castShadow = true;
+    const bedPillow = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.14, 0.26, 0.56)),
+      bedPillowMat,
+    );
+    bedPillow.position.set(0, 0.48, -0.62);
+    bedGroup.add(bedFrame, bedHeadboard, bedQuilt, bedPillow);
+    cottage.add(bedGroup);
+
+    const bedHit = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.6, 1.2, 2.25)),
+      trackMat(new THREE.MeshBasicMaterial({ visible: false })),
+    );
+    bedHit.position.set(1.85, 0.72, -1.55);
+    bedHit.userData = { clickable: 'cottageBed' };
+    cottage.add(bedHit);
+    clickables.push(bedHit);
+
+    // D) Cozy Back-Wall Oak Sideboard + Apple Bowl
+    const sideboard = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(1.5, 0.86, 0.65)),
+      darkOakMat,
+    );
+    sideboard.position.set(-0.05, 0.65, -2.2);
+    sideboard.castShadow = true;
+    const bowlApple = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.28, 0.28, 0.28)),
+      appleRedMat,
+    );
+    bowlApple.position.set(-0.22, 1.22, -2.18);
+    const bowlGold = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(0.26, 0.26, 0.26)),
+      appleGoldMat,
+    );
+    bowlGold.position.set(0.18, 1.21, -2.2);
+    cottage.add(sideboard, bowlApple, bowlGold);
+
+    // Warm Interior Hanging Lantern + PointLight (always warmly lit when inside!)
+    const indoorLantern = buildVoxelLantern(ironMat, lanternGlowMat, trackGeo);
+    indoorLantern.position.set(0, 3.25, -0.35);
+    cottage.add(indoorLantern);
+    cottageInteriorLight = new THREE.PointLight(0xffcf82, 1.6, 11, 1.6);
+    cottageInteriorLight.position.set(cx, gy + 3.0, cz - 0.35);
+    group.add(cottageInteriorLight);
 
     // Porch Lantern + PointLight
     const porchLantern = buildVoxelLantern(ironMat, lanternGlowMat, trackGeo);
-    porchLantern.position.set(1.5, 2.7, 4.55);
+    porchLantern.position.set(1.55, 2.6, 4.55);
     cottage.add(porchLantern);
     const pLight = new THREE.PointLight(0xffb552, 1.9, 13, 1.8);
-    pLight.position.set(cx + 1.5, gy + 2.6, cz + 4.55);
+    pLight.position.set(cx + 1.55, gy + 2.5, cz + 4.55);
     group.add(pLight);
     lanternLights.push(pLight);
 
@@ -1102,7 +1394,7 @@ export function buildOrchardWorld(
       trackGeo(new THREE.BoxGeometry(0.86, 0.86, 0.86)),
       crateMats,
     );
-    crate1.position.set(-2.6, 0.43, 3.6);
+    crate1.position.set(-2.65, 0.43, 3.6);
     crate1.castShadow = true;
     crate1.receiveShadow = true;
     cottage.add(crate1);
@@ -1111,20 +1403,11 @@ export function buildOrchardWorld(
       trackGeo(new THREE.BoxGeometry(0.92, 1.0, 0.92)),
       [barrelSideMat, barrelSideMat, oakPlankMat, oakPlankMat, barrelSideMat, barrelSideMat],
     );
-    barrel.position.set(2.55, 0.5, 3.55);
+    barrel.position.set(2.6, 0.5, 3.55);
     barrel.castShadow = true;
     cottage.add(barrel);
 
-    // Clickable Cottage Door hit proxy (Sleep / Next Day!)
-    const cottageDoorHit = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(2.6, 2.8, 1.8)),
-      trackMat(new THREE.MeshBasicMaterial({ visible: false })),
-    );
-    cottageDoorHit.position.set(0, 1.8, 3.4);
-    cottageDoorHit.userData = { clickable: 'cottageDoor' };
-    cottage.add(cottageDoorHit);
-    clickables.push(cottageDoorHit);
-
+    // Hay bales beside the cottage
     const hay1 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.95, 0.95, 0.95)), hayMat);
     hay1.position.set(4.1, 0.475, -1.2);
     hay1.castShadow = true;
@@ -1523,6 +1806,15 @@ export function buildOrchardWorld(
     const roof3 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.4, 0.45, 1.4)), roofMat);
     roof3.position.y = 4.48;
     gzGroup.add(roof1, roof2, roof3);
+
+    // Winter snow caps atop gazebo roof tiers
+    const gSnow1 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(5.1, 0.14, 5.1)), snowBlockMat);
+    gSnow1.position.set(gx, gy + 3.84, gz);
+    const gSnow2 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(3.3, 0.14, 3.3)), snowBlockMat);
+    gSnow2.position.set(gx, gy + 4.32, gz);
+    const gSnow3 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.5, 0.14, 1.5)), snowBlockMat);
+    gSnow3.position.set(gx, gy + 4.76, gz);
+    winterSnowCaps.add(gSnow1, gSnow2, gSnow3);
 
     // Center tea table + twin benches + hanging lantern
     const table = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.3, 0.72, 1.3)), oakPlankMat);
@@ -2054,6 +2346,7 @@ export function buildOrchardWorld(
     ),
   ];
 
+  const flowersGroup = new THREE.Group();
   const plantGeo = trackGeo(new THREE.PlaneGeometry(0.68, 0.68));
   for (let i = 0; i < 165; i++) {
     const angle = i * 2.39996;
@@ -2076,8 +2369,9 @@ export function buildOrchardWorld(
     const b = new THREE.Mesh(plantGeo, mat);
     b.rotation.y = -Math.PI / 4;
     tuft.add(a, b);
-    group.add(tuft);
+    flowersGroup.add(tuft);
   }
+  group.add(flowersGroup);
 
   // =========================================================================
   // 10. LIVING MINECRAFT DETAILS: BLOCKY CLOUDS, DISTANT HOT-AIR BALLOON,
@@ -2166,10 +2460,12 @@ export function buildOrchardWorld(
   }
   group.add(snowInst);
 
+  let currentSeason: Season = 'spring';
+
   const setWeather = (weather: WeatherKind) => {
     currentWeather = weather;
     rainInst.visible = weather === 'rain' || weather === 'storm';
-    snowInst.visible = weather === 'snow';
+    snowInst.visible = weather === 'snow' || (currentSeason === 'winter' && !rainInst.visible);
     if (weather === 'storm') {
       cloudMat.color.setHex(0x8c99ad);
       cloudMat.opacity = 0.96;
@@ -2186,6 +2482,50 @@ export function buildOrchardWorld(
       cloudMat.color.setHex(0xffffff);
       cloudMat.opacity = 0.85;
     }
+  };
+
+  const setSeason = (season: Season) => {
+    currentSeason = season;
+    textures.setSeason(season);
+
+    if (season === 'winter') {
+      skirtMat.color.setHex(0xdce9f5);
+      waterMat.color.setHex(0xd6f0ff);
+      waterMat.roughness = 0.08;
+      waterMat.opacity = 0.9;
+      winterSnowCaps.visible = true;
+      cottageRoofSnowGroup.visible = true;
+      flowersGroup.visible = false;
+    } else if (season === 'autumn') {
+      skirtMat.color.setHex(0xb08f42);
+      waterMat.color.setHex(0xffffff);
+      waterMat.roughness = 0.14;
+      waterMat.opacity = 0.84;
+      winterSnowCaps.visible = false;
+      cottageRoofSnowGroup.visible = false;
+      flowersGroup.visible = true;
+      petalMat.color.setHex(0xe88a34);
+    } else if (season === 'summer') {
+      skirtMat.color.setHex(0x4c9538);
+      waterMat.color.setHex(0xffffff);
+      waterMat.roughness = 0.14;
+      waterMat.opacity = 0.84;
+      winterSnowCaps.visible = false;
+      cottageRoofSnowGroup.visible = false;
+      flowersGroup.visible = true;
+      petalMat.color.setHex(0xe6f7c6);
+    } else {
+      skirtMat.color.setHex(0x62a847);
+      waterMat.color.setHex(0xffffff);
+      waterMat.roughness = 0.14;
+      waterMat.opacity = 0.84;
+      winterSnowCaps.visible = false;
+      cottageRoofSnowGroup.visible = false;
+      flowersGroup.visible = true;
+      petalMat.color.setHex(0xffd6e6);
+    }
+
+    snowInst.visible = currentWeather === 'snow' || (season === 'winter' && !rainInst.visible);
   };
 
   // Whimsical Distant Hot-Air Balloon (Heartwarming Easter Egg from Apple-chan's Promotion Record!)
@@ -2605,8 +2945,49 @@ export function buildOrchardWorld(
 
   const isNearCottageDoor = (x: number, z: number): boolean => {
     const dx = x - -8.5;
-    const dz = z - -3.4;
-    return dx * dx + dz * dz < 6.5;
+    const dz = z - -4.3;
+    return dx * dx + dz * dz < 4.5;
+  };
+
+  const isInsideCottage = (x: number, z: number): boolean => {
+    return x > -11.9 && x < -5.1 && z > -10.1 && z < -4.35;
+  };
+
+  const isNearCraftingTable = (x: number, z: number): boolean => {
+    const dx = x - -10.55;
+    const dz = z - -8.85;
+    return dx * dx + dz * dz < 4.2;
+  };
+
+  const isNearCottageBed = (x: number, z: number): boolean => {
+    const dx = x - -6.65;
+    const dz = z - -8.75;
+    return dx * dx + dz * dz < 4.6;
+  };
+
+  const isNearCottageChest = (x: number, z: number): boolean => {
+    const dx = x - -10.55;
+    const dz = z - -6.75;
+    return dx * dx + dz * dz < 3.8;
+  };
+
+  const updateCottageInterior = (charPos: THREE.Vector3, dt: number): void => {
+    const inside = isInsideCottage(charPos.x, charPos.z);
+    const nearDoor = isNearCottageDoor(charPos.x, charPos.z) || inside;
+    const targetDoorAngle = nearDoor ? -1.48 : 0;
+    cottageDoorAngle = THREE.MathUtils.damp(cottageDoorAngle, targetDoorAngle, 7.5, Math.min(dt, 0.05));
+    cottageDoorPivot.rotation.y = cottageDoorAngle;
+
+    // Smooth cutaway: hide pitched cottage roof while Apple-chan is inside so Crafting Table, Bed & Chest are crystal-clear!
+    cottageRoofGroup.visible = !inside;
+    if (cottageInteriorLight) {
+      cottageInteriorLight.intensity = THREE.MathUtils.damp(
+        cottageInteriorLight.intensity,
+        inside ? 2.6 : 1.1,
+        6,
+        Math.min(dt, 0.05),
+      );
+    }
   };
 
   const triggerTreeShake = (
@@ -2754,11 +3135,12 @@ export function buildOrchardWorld(
     balloonGroup.position.y = 17.2 + Math.sin(elapsed * 0.55) * 1.1;
     balloonGroup.rotation.y = Math.sin(elapsed * 0.25) * 0.25;
 
-    // Buzzing Minecraft bees (hide during rain/storm/snow)
+    // Buzzing Minecraft bees (hide during rain/storm/snow or winter)
     const fairWeather = currentWeather === 'clear' || currentWeather === 'cloudy';
+    const activeWarmSeason = fairWeather && currentSeason !== 'winter';
     for (const bee of bees) {
-      bee.group.visible = fairWeather;
-      if (!fairWeather) continue;
+      bee.group.visible = activeWarmSeason;
+      if (!activeWarmSeason) continue;
       const a = elapsed * bee.speed + bee.phase;
       const nx = bee.centerX + Math.cos(a) * bee.radius;
       const nz = bee.centerZ + Math.sin(a * 1.3) * bee.radius * 0.8;
@@ -2772,10 +3154,10 @@ export function buildOrchardWorld(
       bee.wingR.rotation.z = -flap;
     }
 
-    // Drifting blossom petals (hide in rain/storm/snow)
+    // Drifting seasonal petals/leaves (hide in rain/storm/snow/winter)
     for (const p of petals) {
-      p.mesh.visible = fairWeather;
-      if (!fairWeather) continue;
+      p.mesh.visible = activeWarmSeason;
+      if (!activeWarmSeason) continue;
       p.mesh.position.y -= p.fallSpeed * clampedDt;
       p.mesh.position.x = p.baseX + Math.sin(elapsed * p.speed + p.phase) * 1.2;
       p.mesh.position.z = p.baseZ + Math.cos(elapsed * p.speed * 0.8 + p.phase) * 0.9;
@@ -2939,6 +3321,12 @@ export function buildOrchardWorld(
     isNearShippingBin,
     isNearShopStall,
     isNearCottageDoor,
+    isInsideCottage,
+    isNearCraftingTable,
+    isNearCottageBed,
+    isNearCottageChest,
+    updateCottageInterior,
+    setSeason,
     setWeather,
     update,
     dispose: () => {

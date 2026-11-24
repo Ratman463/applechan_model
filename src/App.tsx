@@ -11,6 +11,7 @@ import {
   AppleChanAction,
   AppleChanOutfit,
   CameraPreset,
+  CraftingRecipeId,
   CropId,
   FarmState,
   JournalTab,
@@ -21,6 +22,7 @@ import {
   ProduceId,
   RealTimeInfo,
   RushState,
+  Season,
   SpeechMessage,
   TimeMode,
   WeatherInfo,
@@ -39,6 +41,7 @@ import {
 } from './services/realtimeWeather';
 
 const GUIDE_SEEN_KEY = 'applechan_orchard_guide_seen_v1';
+const SEASON_CYCLE: (Season | null)[] = [null, 'spring', 'summer', 'autumn', 'winter'];
 
 function shouldShowGuideOnFirstVisit(): boolean {
   try {
@@ -62,6 +65,9 @@ export default function App() {
   const [realTime, setRealTime] = useState<RealTimeInfo>(() =>
     getRealTimeSnapshot(initialLangRef.current),
   );
+  const [seasonOverride, setSeasonOverride] = useState<Season | null>(null);
+  const activeSeason: Season = seasonOverride ?? realTime.season;
+
   const [weather, setWeather] = useState<WeatherInfo>(() => getFallbackWeather());
   const [outfit, setOutfit] = useState<AppleChanOutfit>('common');
   const [cameraPreset, setCameraPreset] = useState<CameraPreset | null>('appleChan');
@@ -71,6 +77,7 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState<boolean>(() => shouldShowGuideOnFirstVisit());
   const [journalOpen, setJournalOpen] = useState(false);
   const [journalTab, setJournalTab] = useState<JournalTab>('bag');
+  const [craftingOpen, setCraftingOpen] = useState(false);
 
   // Individual per-user SQLite account state (Bearer token strictly kept in memory)
   const [accountOpen, setAccountOpen] = useState(false);
@@ -113,7 +120,13 @@ export default function App() {
 
   const openJournalTab = useCallback((tab?: JournalTab) => {
     if (tab) setJournalTab(tab);
+    setCraftingOpen(false);
     setJournalOpen(true);
+  }, []);
+
+  const openCraftingTable = useCallback(() => {
+    setJournalOpen(false);
+    setCraftingOpen(true);
   }, []);
 
   // Sync <html lang>, <title>, real-time formatted date, and engine 3D signboards on language change
@@ -178,11 +191,12 @@ export default function App() {
     engineRef.current?.setInputPaused(
       guideOpen ||
         journalOpen ||
+        craftingOpen ||
         accountOpen ||
         rush.finished ||
         farm.pendingSummary !== null,
     );
-  }, [guideOpen, journalOpen, accountOpen, rush.finished, farm.pendingSummary]);
+  }, [guideOpen, journalOpen, craftingOpen, accountOpen, rush.finished, farm.pendingSummary]);
 
   // Mount Three.js engine once in an isolated ref container so React UI never resets WebGL
   useEffect(() => {
@@ -199,6 +213,7 @@ export default function App() {
         onCameraPresetClear: () => setCameraPreset(null),
         onRushStateChange: (nextRush) => setRush(nextRush),
         onOpenJournalTab: (tab) => openJournalTab(tab),
+        onOpenCraftingTable: () => openCraftingTable(),
       },
       initialLangRef.current,
     );
@@ -207,6 +222,7 @@ export default function App() {
     const snap = getRealTimeSnapshot(initialLangRef.current);
     engine.setTimeMode('realtime');
     engine.setRealTimeHour(snap.hourDecimal);
+    engine.setSeason(seasonOverride ?? snap.season);
     engine.setWeather(weather.kind);
 
     return () => {
@@ -220,12 +236,16 @@ export default function App() {
       engineRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSpeech, openJournalTab]);
+  }, [showSpeech, openJournalTab, openCraftingTable]);
 
-  // Push weather updates to the 3D engine whenever weather state changes
+  // Push live weather & seasonal landscape updates to the 3D engine
   useEffect(() => {
     engineRef.current?.setWeather(weather.kind);
   }, [weather.kind]);
+
+  useEffect(() => {
+    engineRef.current?.setSeason(activeSeason);
+  }, [activeSeason]);
 
   // Debounced automatic persistence to the signed-in player's individual SQLite database
   useEffect(() => {
@@ -273,6 +293,7 @@ export default function App() {
       } else if (e.key === 'Escape') {
         handleCloseGuide();
         setJournalOpen(false);
+        setCraftingOpen(false);
         setAccountOpen(false);
         engineRef.current?.dismissDaySummary();
         engineRef.current?.stopHarvestRush(true);
@@ -287,6 +308,13 @@ export default function App() {
       const next: Language = prev === 'en' ? 'zh' : 'en';
       saveLanguagePreference(next);
       return next;
+    });
+  };
+
+  const handleCycleSeason = () => {
+    setSeasonOverride((prev) => {
+      const idx = SEASON_CYCLE.indexOf(prev);
+      return SEASON_CYCLE[(idx + 1) % SEASON_CYCLE.length];
     });
   };
 
@@ -312,6 +340,7 @@ export default function App() {
 
   const handleSleep = () => {
     setJournalOpen(false);
+    setCraftingOpen(false);
     if (timeMode === 'night') {
       setTimeMode('morning');
       engineRef.current?.setTimeMode('morning');
@@ -321,6 +350,7 @@ export default function App() {
 
   const handleStartRush = () => {
     setJournalOpen(false);
+    setCraftingOpen(false);
     engineRef.current?.startHarvestRush();
   };
 
@@ -399,6 +429,7 @@ export default function App() {
         language={language}
         timeMode={timeMode}
         realTime={realTime}
+        activeSeason={activeSeason}
         weather={weather}
         outfit={outfit}
         cameraPreset={cameraPreset}
@@ -412,12 +443,14 @@ export default function App() {
         guideOpen={guideOpen}
         journalOpen={journalOpen}
         journalTab={journalTab}
+        craftingOpen={craftingOpen}
         accountOpen={accountOpen}
         session={session}
         backendAvailable={backendAvailable}
         savingAccount={savingAccount}
         saveToast={saveToast}
         onLanguageToggle={handleToggleLanguage}
+        onCycleSeason={handleCycleSeason}
         onTimeModeChange={handleTimeMode}
         onOutfitChange={handleOutfit}
         onCameraPresetChange={handleCameraPreset}
@@ -436,6 +469,9 @@ export default function App() {
         onCraftArtisan={(recipe: 'cider' | 'pie') =>
           engineRef.current?.craftArtisan(recipe)
         }
+        onCraftRecipe={(recipe: CraftingRecipeId) =>
+          engineRef.current?.craftRecipe(recipe)
+        }
         onBuySeed={(crop: CropId) => engineRef.current?.buySeed(crop)}
         onBuyUpgrade={(key: keyof OrchardUpgrades) =>
           engineRef.current?.buyUpgrade(key)
@@ -452,6 +488,8 @@ export default function App() {
         onOpenJournal={openJournalTab}
         onCloseJournal={() => setJournalOpen(false)}
         onSelectJournalTab={setJournalTab}
+        onOpenCrafting={openCraftingTable}
+        onCloseCrafting={() => setCraftingOpen(false)}
         onOpenAccount={() => {
           setSaveToast(null);
           setAccountOpen(true);

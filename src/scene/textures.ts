@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TRANSLATIONS } from '../i18n';
-import { Language } from './types';
+import { Language, Season } from './types';
 
 /**
  * Seeded pseudo-random helper so procedural Minecraft pixel textures are
@@ -61,11 +61,14 @@ export interface OrchardTextureLibrary {
   appleCrateTop: VoxelTexturePair;
   barrelSide: VoxelTexturePair;
   hayBale: VoxelTexturePair;
+  craftingTableTop: VoxelTexturePair;
+  craftingTableSide: VoxelTexturePair;
   windowPane: THREE.CanvasTexture;
   water: THREE.CanvasTexture;
   signBoard: THREE.CanvasTexture;
   shopSignBoard: THREE.CanvasTexture;
   setSignLanguage: (lang: Language) => void;
+  setSeason: (season: Season) => void;
   lanternGlass: THREE.CanvasTexture;
   contactShadow: THREE.CanvasTexture;
   wildflowerRed: THREE.CanvasTexture;
@@ -208,29 +211,88 @@ export function createOrchardTextures(
     return p;
   };
 
-  // 1. Grass Top — vibrant Minecraft orchard meadow green with clover & blade specks
-  const grassTop = trackPair(
-    createVoxelPair(16, aniso, (ctx, bCtx, s) => {
+  // 1. Dynamic Seasonal Grass Top (Spring meadow / Summer emerald / Autumn ochre / Winter snowy!)
+  const [grassTopC, grassTopCtx] = makeCanvas(16, 16);
+  const [grassTopBC, grassTopBCtx] = makeCanvas(16, 16);
+  const grassTop: VoxelTexturePair = trackPair({
+    map: finalizeColorTexture(grassTopC, aniso),
+    bumpMap: finalizeDataTexture(grassTopBC, aniso),
+  });
+
+  const drawSeasonalGrassTop = (season: Season) => {
+    const s = 16;
+    grassTopBCtx.fillStyle = '#808080';
+    grassTopBCtx.fillRect(0, 0, s, s);
+    if (season === 'winter') {
       fillPixelNoise(
-        ctx,
-        bCtx,
+        grassTopCtx,
+        grassTopBCtx,
+        s,
+        ['#EEF6FC', '#F7FBFE', '#E1EEF7', '#E7F2FA', '#F2F8FC'],
+        101,
+        24,
+      );
+      const rand = mulberry32(106);
+      for (let i = 0; i < 16; i++) {
+        const x = Math.floor(rand() * s);
+        const y = Math.floor(rand() * s);
+        grassTopCtx.fillStyle = rand() > 0.4 ? '#FFFFFF' : '#C7DCEB';
+        grassTopCtx.fillRect(x, y, 1, 1);
+      }
+    } else if (season === 'autumn') {
+      fillPixelNoise(
+        grassTopCtx,
+        grassTopBCtx,
+        s,
+        ['#B3913D', '#C4A047', '#9F7F34', '#BA9841', '#AA8738'],
+        101,
+        44,
+      );
+      const rand = mulberry32(104);
+      for (let i = 0; i < 18; i++) {
+        const x = Math.floor(rand() * s);
+        const y = Math.floor(rand() * s);
+        grassTopCtx.fillStyle = rand() > 0.35 ? '#D4B254' : '#856728';
+        grassTopCtx.fillRect(x, y, 1, 1);
+      }
+    } else if (season === 'summer') {
+      fillPixelNoise(
+        grassTopCtx,
+        grassTopBCtx,
+        s,
+        ['#4F9E3C', '#5AA944', '#469034', '#63B54B', '#4C9839'],
+        101,
+        46,
+      );
+      const rand = mulberry32(103);
+      for (let i = 0; i < 18; i++) {
+        const x = Math.floor(rand() * s);
+        const y = Math.floor(rand() * s);
+        grassTopCtx.fillStyle = rand() > 0.35 ? '#76C75B' : '#3A7A2B';
+        grassTopCtx.fillRect(x, y, 1, 1);
+      }
+    } else {
+      fillPixelNoise(
+        grassTopCtx,
+        grassTopBCtx,
         s,
         ['#69B34C', '#74BE54', '#5DA542', '#7EC75B', '#64AC47'],
         101,
         46,
       );
       const rand = mulberry32(102);
-      // Little lighter grass blade tufts & tiny sunlit clovers
       for (let i = 0; i < 18; i++) {
         const x = Math.floor(rand() * s);
         const y = Math.floor(rand() * s);
-        ctx.fillStyle = rand() > 0.35 ? '#90D66B' : '#4E8F37';
-        ctx.fillRect(x, y, 1, 1);
-        bCtx.fillStyle = '#c8c8c8';
-        bCtx.fillRect(x, y, 1, 1);
+        grassTopCtx.fillStyle = rand() > 0.35 ? '#90D66B' : '#4E8F37';
+        grassTopCtx.fillRect(x, y, 1, 1);
+        grassTopBCtx.fillStyle = '#c8c8c8';
+        grassTopBCtx.fillRect(x, y, 1, 1);
       }
-    }),
-  );
+    }
+    grassTop.map.needsUpdate = true;
+    grassTop.bumpMap.needsUpdate = true;
+  };
 
   // 2. Dirt
   const dirt = trackPair(
@@ -255,40 +317,69 @@ export function createOrchardTextures(
     }),
   );
 
-  // 3. Grass Side — rich dirt below with overhanging jagged Minecraft grass turf on top
-  const grassSide = trackPair(
-    createVoxelPair(16, aniso, (ctx, bCtx, s) => {
-      fillPixelNoise(
-        ctx,
-        bCtx,
-        s,
-        ['#8C6239', '#7D5530', '#966A40', '#6E4B2A'],
-        211,
-        50,
-      );
-      const rand = mulberry32(212);
-      const overhang = [3, 4, 3, 5, 4, 3, 4, 6, 4, 3, 5, 4, 3, 4, 5, 3];
-      for (let x = 0; x < s; x++) {
-        const h = overhang[x % overhang.length];
-        for (let y = 0; y < h; y++) {
-          const isEdge = y === h - 1;
-          ctx.fillStyle = isEdge
+  // 3. Dynamic Seasonal Grass Side (overhanging green turf OR iconic Minecraft snowy grass side!)
+  const [grassSideC, grassSideCtx] = makeCanvas(16, 16);
+  const [grassSideBC, grassSideBCtx] = makeCanvas(16, 16);
+  const grassSide: VoxelTexturePair = trackPair({
+    map: finalizeColorTexture(grassSideC, aniso),
+    bumpMap: finalizeDataTexture(grassSideBC, aniso),
+  });
+
+  const drawSeasonalGrassSide = (season: Season) => {
+    const s = 16;
+    grassSideBCtx.fillStyle = '#808080';
+    grassSideBCtx.fillRect(0, 0, s, s);
+    fillPixelNoise(
+      grassSideCtx,
+      grassSideBCtx,
+      s,
+      ['#8C6239', '#7D5530', '#966A40', '#6E4B2A'],
+      211,
+      50,
+    );
+    const rand = mulberry32(212);
+    const overhang = [3, 4, 3, 5, 4, 3, 4, 6, 4, 3, 5, 4, 3, 4, 5, 3];
+    for (let x = 0; x < s; x++) {
+      const h = overhang[x % overhang.length];
+      for (let y = 0; y < h; y++) {
+        const isEdge = y === h - 1;
+        if (season === 'winter') {
+          grassSideCtx.fillStyle = isEdge
+            ? '#CBE0EE'
+            : rand() > 0.45
+              ? '#F6FAFE'
+              : '#E7F2F9';
+        } else if (season === 'autumn') {
+          grassSideCtx.fillStyle = isEdge
+            ? '#8E6F2B'
+            : rand() > 0.45
+              ? '#C29E46'
+              : '#AC8A39';
+        } else if (season === 'summer') {
+          grassSideCtx.fillStyle = isEdge
+            ? '#3D7E2D'
+            : rand() > 0.45
+              ? '#59A842'
+              : '#4A9336';
+        } else {
+          grassSideCtx.fillStyle = isEdge
             ? '#52943A'
             : rand() > 0.45
               ? '#72BD53'
               : '#62A945';
-          ctx.fillRect(x, y, 1, 1);
-          bCtx.fillStyle = isEdge ? '#555555' : '#dcdcdc';
-          bCtx.fillRect(x, y, 1, 1);
         }
-        // Subtle drop shadow pixel right under grass overhang
-        if (h < s) {
-          ctx.fillStyle = '#5B3C21';
-          ctx.fillRect(x, h, 1, 1);
-        }
+        grassSideCtx.fillRect(x, y, 1, 1);
+        grassSideBCtx.fillStyle = isEdge ? '#555555' : '#dcdcdc';
+        grassSideBCtx.fillRect(x, y, 1, 1);
       }
-    }),
-  );
+      if (h < s) {
+        grassSideCtx.fillStyle = '#5B3C21';
+        grassSideCtx.fillRect(x, h, 1, 1);
+      }
+    }
+    grassSide.map.needsUpdate = true;
+    grassSide.bumpMap.needsUpdate = true;
+  };
 
   // 4. Dirt Path Top (warm packed orchard walkway)
   const dirtPathTop = trackPair(
@@ -556,38 +647,72 @@ export function createOrchardTextures(
     }),
   );
 
-  // 11. Lush Apple Tree Leaves & Spring Blossom Leaves
+  // 11. Dynamic Seasonal Apple Tree Leaves (Spring blossoms / Summer lush / Autumn amber / Winter snow-dusted)
+  const [leavesLushC, leavesLushCtx] = makeCanvas(16, 16);
+  const [leavesLushBC, leavesLushBCtx] = makeCanvas(16, 16);
+  const leavesLush: VoxelTexturePair = trackPair({
+    map: finalizeColorTexture(leavesLushC, aniso),
+    bumpMap: finalizeDataTexture(leavesLushBC, aniso),
+  });
+
+  const [leavesBlossomC, leavesBlossomCtx] = makeCanvas(16, 16);
+  const [leavesBlossomBC, leavesBlossomBCtx] = makeCanvas(16, 16);
+  const leavesBlossom: VoxelTexturePair = trackPair({
+    map: finalizeColorTexture(leavesBlossomC, aniso),
+    bumpMap: finalizeDataTexture(leavesBlossomBC, aniso),
+  });
+
   const drawLeaves = (
     ctx: CanvasRenderingContext2D,
     bCtx: CanvasRenderingContext2D,
     s: number,
     withBlossoms: boolean,
+    season: Season,
     seed: number,
   ) => {
     const rand = mulberry32(seed);
-    const greens = ['#4A8F36', '#5BA843', '#6AB84E', '#3D7A2C', '#7BC85C'];
+    bCtx.fillStyle = '#808080';
+    bCtx.fillRect(0, 0, s, s);
+
+    let palette: string[];
+    let shadowCol: string;
+    if (season === 'winter') {
+      palette = withBlossoms
+        ? ['#E3EFF7', '#D4E6F2', '#5A8568', '#EDF5FA', '#6E997B']
+        : ['#4C7A5B', '#5D8C6C', '#DDEBF4', '#3D664B', '#EDF5FA'];
+      shadowCol = '#2C4A38';
+    } else if (season === 'autumn') {
+      palette = withBlossoms
+        ? ['#E0882C', '#ECA63B', '#CF6924', '#F2B84B', '#C45522']
+        : ['#C8762A', '#DA9236', '#B36122', '#E5A842', '#9D501E'];
+      shadowCol = '#6E3214';
+    } else if (season === 'summer') {
+      palette = ['#3A7D2C', '#499338', '#56A442', '#2E6923', '#64B44D'];
+      shadowCol = '#1F4B18';
+    } else {
+      palette = ['#4A8F36', '#5BA843', '#6AB84E', '#3D7A2C', '#7BC85C'];
+      shadowCol = '#2E5E21';
+    }
+
     for (let y = 0; y < s; y++) {
       for (let x = 0; x < s; x++) {
-        // Layered leaf clusters (2x2 mottled voxel pattern)
-        const c = greens[Math.floor(rand() * greens.length)];
+        const c = palette[Math.floor(rand() * palette.length)];
         ctx.fillStyle = c;
         ctx.fillRect(x, y, 1, 1);
-        const bv = c === '#3D7A2C' ? 60 : c === '#7BC85C' ? 215 : 145;
+        const bv = 130 + Math.floor(rand() * 70);
         bCtx.fillStyle = rgbStr(bv, bv, bv);
         bCtx.fillRect(x, y, 1, 1);
       }
     }
-    // Deep shadow pockets between leaf clusters
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 20; i++) {
       const x = Math.floor(rand() * s);
       const y = Math.floor(rand() * s);
-      ctx.fillStyle = '#2E5E21';
+      ctx.fillStyle = shadowCol;
       ctx.fillRect(x, y, 1, 1);
       bCtx.fillStyle = '#282828';
       bCtx.fillRect(x, y, 1, 1);
     }
-    if (withBlossoms) {
-      // Cute 2x2 white-and-pink apple blossoms with yellow centers
+    if (withBlossoms && season === 'spring') {
       const spots = [
         [2, 2],
         [10, 3],
@@ -605,15 +730,28 @@ export function createOrchardTextures(
         bCtx.fillStyle = '#f0f0f0';
         bCtx.fillRect(bx, by, 2, 2);
       }
+    } else if (season === 'winter') {
+      // Crisp white snow flecks resting on leaf clusters
+      for (let i = 0; i < 16; i++) {
+        const sx = Math.floor(rand() * (s - 1));
+        const sy = Math.floor(rand() * 8);
+        ctx.fillStyle = '#F7FBFE';
+        ctx.fillRect(sx, sy, 2, 1);
+      }
     }
   };
 
-  const leavesLush = trackPair(
-    createVoxelPair(16, aniso, (ctx, bCtx, s) => drawLeaves(ctx, bCtx, s, false, 701)),
-  );
-  const leavesBlossom = trackPair(
-    createVoxelPair(16, aniso, (ctx, bCtx, s) => drawLeaves(ctx, bCtx, s, true, 702)),
-  );
+  const setSeason = (season: Season) => {
+    drawSeasonalGrassTop(season);
+    drawSeasonalGrassSide(season);
+    drawLeaves(leavesLushCtx, leavesLushBCtx, 16, false, season, 701);
+    leavesLush.map.needsUpdate = true;
+    leavesLush.bumpMap.needsUpdate = true;
+    drawLeaves(leavesBlossomCtx, leavesBlossomBCtx, 16, true, season, 702);
+    leavesBlossom.map.needsUpdate = true;
+    leavesBlossom.bumpMap.needsUpdate = true;
+  };
+  setSeason('spring');
 
   // 12. Glossy Red & Golden Voxel Apples
   const drawApple = (
@@ -718,6 +856,63 @@ export function createOrchardTextures(
       bCtx.fillStyle = '#ffffff';
       bCtx.fillRect(0, 4, s, 2);
       bCtx.fillRect(0, 11, s, 2);
+    }),
+  );
+
+  // 14B. Iconic Minecraft Crafting Table (3x3 Grid Top & Saw/Tool Oak Sides)
+  const craftingTableTop = trackPair(
+    createVoxelPair(16, aniso, (ctx, bCtx, s) => {
+      fillPixelNoise(
+        ctx,
+        bCtx,
+        s,
+        ['#BC8A4F', '#C8965A', '#AE7C43', '#D1A065'],
+        840,
+        24,
+      );
+      // Dark oak border rim
+      ctx.fillStyle = '#5E3C1E';
+      ctx.fillRect(0, 0, s, 2);
+      ctx.fillRect(0, s - 2, s, 2);
+      ctx.fillRect(0, 0, 2, s);
+      ctx.fillRect(s - 2, 0, 2, s);
+      // Crisp 3x3 crafting matrix lines
+      ctx.fillStyle = '#4B2E16';
+      ctx.fillRect(5, 2, 1, 12);
+      ctx.fillRect(10, 2, 1, 12);
+      ctx.fillRect(2, 5, 12, 1);
+      ctx.fillRect(2, 10, 12, 1);
+      bCtx.fillStyle = '#383838';
+      bCtx.fillRect(5, 2, 1, 12);
+      bCtx.fillRect(10, 2, 1, 12);
+      bCtx.fillRect(2, 5, 12, 1);
+      bCtx.fillRect(2, 10, 12, 1);
+    }),
+  );
+
+  const craftingTableSide = trackPair(
+    createVoxelPair(16, aniso, (ctx, bCtx, s) => {
+      drawPlanks(ctx, bCtx, s, [168, 124, 74], 842);
+      // Dark top apron trim
+      ctx.fillStyle = '#5E3C1E';
+      ctx.fillRect(0, 0, s, 3);
+      ctx.fillStyle = '#3E2510';
+      ctx.fillRect(0, 3, s, 1);
+      // Hanging iron saw on left
+      ctx.fillStyle = '#8F969E';
+      ctx.fillRect(3, 5, 2, 7);
+      ctx.fillStyle = '#6A717A';
+      ctx.fillRect(5, 6, 1, 5);
+      ctx.fillStyle = '#4E3119';
+      ctx.fillRect(3, 4, 3, 2);
+      // Hanging hammer on right
+      ctx.fillStyle = '#7C5430';
+      ctx.fillRect(11, 6, 1, 6);
+      ctx.fillStyle = '#4E545C';
+      ctx.fillRect(9, 4, 5, 2);
+      bCtx.fillStyle = '#efefef';
+      bCtx.fillRect(3, 5, 3, 7);
+      bCtx.fillRect(9, 4, 5, 8);
     }),
   );
 
@@ -1612,11 +1807,14 @@ export function createOrchardTextures(
     appleCrateTop,
     barrelSide,
     hayBale,
+    craftingTableTop,
+    craftingTableSide,
     windowPane,
     water,
     signBoard,
     shopSignBoard,
     setSignLanguage,
+    setSeason,
     lanternGlass,
     contactShadow,
     wildflowerRed,
