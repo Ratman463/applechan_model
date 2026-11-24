@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { TRANSLATIONS } from '../i18n';
+import { Language } from './types';
 
 /**
  * Seeded pseudo-random helper so procedural Minecraft pixel textures are
@@ -43,6 +45,7 @@ export interface OrchardTextureLibrary {
   dirtPathTop: VoxelTexturePair;
   dirtPathSide: VoxelTexturePair;
   farmlandTop: VoxelTexturePair;
+  farmlandWetTop: VoxelTexturePair;
   cobblestone: VoxelTexturePair;
   mossyCobble: VoxelTexturePair;
   oakBark: VoxelTexturePair;
@@ -61,6 +64,8 @@ export interface OrchardTextureLibrary {
   windowPane: THREE.CanvasTexture;
   water: THREE.CanvasTexture;
   signBoard: THREE.CanvasTexture;
+  shopSignBoard: THREE.CanvasTexture;
+  setSignLanguage: (lang: Language) => void;
   lanternGlass: THREE.CanvasTexture;
   contactShadow: THREE.CanvasTexture;
   wildflowerRed: THREE.CanvasTexture;
@@ -341,6 +346,28 @@ export function createOrchardTextures(
           } else {
             ctx.fillStyle = rgbStr(116 + v, 77 + v, 44 + v);
             bCtx.fillStyle = '#d4d4d4';
+          }
+          ctx.fillRect(x, y, 1, 1);
+          bCtx.fillRect(x, y, 1, 1);
+        }
+      }
+    }),
+  );
+
+  // 5B. Wet Watered Farmland Top (dark rich watered soil!)
+  const farmlandWetTop = trackPair(
+    createVoxelPair(16, aniso, (ctx, bCtx, s) => {
+      const rand = mulberry32(355);
+      for (let y = 0; y < s; y++) {
+        const furrow = y % 4 === 0 || y % 4 === 3;
+        for (let x = 0; x < s; x++) {
+          const v = (rand() - 0.5) * 10;
+          if (furrow) {
+            ctx.fillStyle = rgbStr(52 + v, 32 + v, 18 + v);
+            bCtx.fillStyle = '#383838';
+          } else {
+            ctx.fillStyle = rgbStr(74 + v, 47 + v, 26 + v);
+            bCtx.fillStyle = '#c8c8c8';
           }
           ctx.fillRect(x, y, 1, 1);
           bCtx.fillRect(x, y, 1, 1);
@@ -738,43 +765,79 @@ export function createOrchardTextures(
     })(),
   );
 
-  // 17. Orchard Wooden Signboard with crisp pixel typography & little apple icon
-  const signBoard = track(
-    (() => {
-      const [c, ctx] = makeCanvas(256, 96);
-      // Oak plank background
-      ctx.fillStyle = '#B88952';
-      ctx.fillRect(0, 0, 256, 96);
-      for (let y = 0; y < 96; y += 24) {
-        ctx.fillStyle = '#8F6437';
-        ctx.fillRect(0, y, 256, 3);
-      }
-      // Carved border
-      ctx.strokeStyle = '#5D3C1E';
-      ctx.lineWidth = 6;
-      ctx.strokeRect(3, 3, 250, 90);
-      // Cute pixel apple badge on left
-      ctx.fillStyle = '#D93B32';
-      ctx.fillRect(22, 34, 24, 24);
-      ctx.fillStyle = '#FF9C8F';
-      ctx.fillRect(26, 38, 6, 6);
-      ctx.fillStyle = '#5D3C1E';
-      ctx.fillRect(32, 26, 4, 8);
-      ctx.fillStyle = '#6BC04B';
-      ctx.fillRect(36, 26, 10, 6);
+  // 17. Dynamic Bilingual 3D Orchard Signboard & Market Stall Sign
+  const [signCanvas, signCtx] = makeCanvas(256, 96);
+  const signBoard = track(finalizeColorTexture(signCanvas, aniso));
 
-      // Crisp engraved text
+  const [shopSignCanvas, shopSignCtx] = makeCanvas(256, 72);
+  const shopSignBoard = track(finalizeColorTexture(shopSignCanvas, aniso));
+
+  const drawMainSign = (lang: Language) => {
+    const t = TRANSLATIONS[lang];
+    const ctx = signCtx;
+    ctx.fillStyle = '#B88952';
+    ctx.fillRect(0, 0, 256, 96);
+    for (let y = 0; y < 96; y += 24) {
+      ctx.fillStyle = '#8F6437';
+      ctx.fillRect(0, y, 256, 3);
+    }
+    ctx.strokeStyle = '#5D3C1E';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 250, 90);
+    // Cute pixel apple badge on left
+    ctx.fillStyle = '#D93B32';
+    ctx.fillRect(20, 34, 24, 24);
+    ctx.fillStyle = '#FF9C8F';
+    ctx.fillRect(24, 38, 6, 6);
+    ctx.fillStyle = '#5D3C1E';
+    ctx.fillRect(30, 26, 4, 8);
+    ctx.fillStyle = '#6BC04B';
+    ctx.fillRect(34, 26, 10, 6);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    if (lang === 'zh') {
+      ctx.fillStyle = '#3B2310';
+      ctx.font = 'bold 28px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(t.signLine1, 56, 38);
+      ctx.fillStyle = '#5A3718';
+      ctx.font = 'bold 18px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(t.signLine2, 58, 68);
+    } else {
       ctx.fillStyle = '#3B2310';
       ctx.font = 'bold 26px "Bricolage Grotesque", sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText("Apple-chan's", 60, 36);
+      ctx.fillText(t.signLine1, 56, 36);
       ctx.fillStyle = '#523217';
       ctx.font = 'bold 22px "Bricolage Grotesque", sans-serif';
-      ctx.fillText('Orchard', 60, 66);
-      return finalizeColorTexture(c, aniso);
-    })(),
-  );
+      ctx.fillText(t.signLine2, 56, 66);
+    }
+    signBoard.needsUpdate = true;
+  };
+
+  const drawShopSign = (lang: Language) => {
+    const t = TRANSLATIONS[lang];
+    const ctx = shopSignCtx;
+    ctx.fillStyle = '#C4955B';
+    ctx.fillRect(0, 0, 256, 72);
+    ctx.strokeStyle = '#5D3C1E';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 250, 66);
+    ctx.fillStyle = '#3B2310';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font =
+      lang === 'zh'
+        ? 'bold 30px "PingFang SC", "Microsoft YaHei", sans-serif'
+        : 'bold 26px "Bricolage Grotesque", sans-serif';
+    ctx.fillText(t.shopSignLine, 128, 37);
+    shopSignBoard.needsUpdate = true;
+  };
+
+  const setSignLanguage = (lang: Language) => {
+    drawMainSign(lang);
+    drawShopSign(lang);
+  };
+  setSignLanguage('en');
 
   // 18. Lantern Glass Core
   const lanternGlass = track(
@@ -1533,6 +1596,7 @@ export function createOrchardTextures(
     dirtPathTop,
     dirtPathSide,
     farmlandTop,
+    farmlandWetTop,
     cobblestone,
     mossyCobble,
     oakBark,
@@ -1551,6 +1615,8 @@ export function createOrchardTextures(
     windowPane,
     water,
     signBoard,
+    shopSignBoard,
+    setSignLanguage,
     lanternGlass,
     contactShadow,
     wildflowerRed,

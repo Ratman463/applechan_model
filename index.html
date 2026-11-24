@@ -3,18 +3,87 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Apple-chan's Orchard</title>
+    <title>Apple-chan's Orchard – 3D Minecraft Voxel Game | 果酱的苹果园</title>
     <meta
       name="description"
-      content="An interactive Minecraft-style 3D voxel apple orchard featuring Apple-chan, with handcrafted procedural pixel textures, dynamic lighting, and cheerful character interactions."
+      content="Play Apple-chan's Orchard (果酱的苹果园) — a free 3D Minecraft-style voxel web game. Walk with WASD, hug apple trees, harvest golden apples, and unlock archives."
     />
-    <meta property="og:title" content="Apple-chan's Orchard" />
+    <meta
+      name="keywords"
+      content="Apple-chan, 果酱, Apple-chan's Orchard, 果酱的苹果园, Minecraft style web game, 3D voxel game, Three.js orchard game, 70CentsApple, 我的世界风格小游戏, 3D像素苹果园, 免费网页游戏"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#8FD0FF" />
+    <link rel="canonical" href="https://game.ratapi.com/apple/" />
+    <link rel="alternate" hreflang="en" href="https://game.ratapi.com/apple/?lang=en" />
+    <link rel="alternate" hreflang="zh-CN" href="https://game.ratapi.com/apple/?lang=zh" />
+    <link rel="alternate" hreflang="x-default" href="https://game.ratapi.com/apple/" />
+
+    <!-- OpenGraph / Social Share Cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://game.ratapi.com/apple/" />
+    <meta property="og:site_name" content="Apple-chan's Orchard · 果酱的苹果园" />
+    <meta
+      property="og:title"
+      content="Apple-chan's Orchard – 3D Minecraft Voxel Game | 果酱的苹果园"
+    />
     <meta
       property="og:description"
-      content="Explore Apple-chan's blooming Minecraft-style voxel apple orchard with dynamic lighting, tree-hugging interactions, and switchable outfits."
+      content="Explore Apple-chan's blooming 3D Minecraft-style apple orchard! Walk with WASD, hug trees to drop golden apples, play 60s Harvest Rush, and unlock character archives."
     />
-    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://game.ratapi.com/apple/og-cover.jpg" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="720" />
+    <meta
+      property="og:image:alt"
+      content="Apple-chan hugging a blossoming apple tree in a sunny 3D Minecraft-style voxel orchard"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+
+    <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Apple-chan's Orchard – 3D Minecraft Voxel Game | 果酱的苹果园"
+    />
+    <meta
+      name="twitter:description"
+      content="Play a cozy 3D Minecraft-style voxel orchard game featuring Apple-chan (果酱). Hug trees, collect golden apples, and beat your Harvest Rush high score."
+    />
+    <meta name="twitter:image" content="https://game.ratapi.com/apple/og-cover.jpg" />
+
+    <!-- Schema.org Structured Data (VideoGame + WebApplication) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": ["VideoGame", "WebApplication"],
+        "name": "Apple-chan's Orchard",
+        "alternateName": "果酱的苹果园",
+        "url": "https://game.ratapi.com/apple/",
+        "image": "https://game.ratapi.com/apple/og-cover.jpg",
+        "description": "An interactive 3D Minecraft-style voxel web game featuring original character Apple-chan (果酱). Explore the sunny orchard, move freely with WASD, hug apple trees to collect red and golden apples, water saplings, switch outfits, and compete in the 60-second Golden Harvest Rush challenge.",
+        "inLanguage": ["en", "zh-CN"],
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Any",
+        "gamePlatform": "Web Browser",
+        "playMode": "SinglePlayer",
+        "genre": ["Casual", "Sandbox", "Voxel", "Cozy Game"],
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "creator": {
+          "@type": "Person",
+          "name": "70CentsApple",
+          "url": "https://70centsapple.top/"
+        }
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -24,7 +93,22 @@
   </head>
   <body class="overflow-hidden select-none bg-[#8FD0FF] text-[#1F2A1E]">
     <div id="root"></div>
+    <noscript>
+      <main style="max-width: 720px; margin: 40px auto; padding: 24px; font-family: system-ui, sans-serif; line-height: 1.6;">
+        <h1>Apple-chan's Orchard · 果酱的苹果园</h1>
+        <p>
+          Welcome to Apple-chan's Orchard, a free 3D Minecraft-style voxel web game featuring
+          original character Apple-chan (果酱) created by 70CentsApple. Move freely around the
+          orchard with WASD or arrow keys, jump with Space, hug apple trees to shake down red and
+          golden apples, water saplings, switch between Common, Spring, and Idol outfits, and
+          challenge the 60-second Golden Harvest Rush mode.
+        </p>
+        <p lang="zh-CN">
+          欢迎来到《果酱的苹果园》——一款免费在线游玩的 3D 我的世界风格体素网页游戏！操控原创角色果酱（Apple-chan），使用 WASD 或方向键自由探索阳光果园、空格跳跃、点击或按 E 键拥抱苹果树收获红苹果与金苹果、浇灌小树苗、自由切换常服/春服/偶像服，并挑战 60 秒“黄金采摘挑战”解锁果酱的全部信赖档案！
+        </p>
+        <p>Please enable JavaScript and WebGL in your browser to play.</p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

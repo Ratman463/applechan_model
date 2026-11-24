@@ -1,6 +1,6 @@
 /**
  * Procedural Web Audio synthesizer for gentle Minecraft-inspired orchard chimes
- * and soft interactive sound effects (zero external audio file dependencies).
+ * and crisp interactive game sound effects (zero external audio file dependencies).
  */
 export class OrchardAudio {
   private ctx: AudioContext | null = null;
@@ -46,11 +46,11 @@ export class OrchardAudio {
     const scheduleNext = () => {
       if (!this.enabled) return;
       const note = scale[Math.floor(Math.random() * scale.length)];
-      this.playSoftNote(note, 0.045, 2.2);
+      this.playSoftNote(note, 0.042, 2.2);
       if (Math.random() > 0.55) {
         const harmony = scale[Math.floor(Math.random() * scale.length)];
         window.setTimeout(() => {
-          if (this.enabled) this.playSoftNote(harmony, 0.032, 1.9);
+          if (this.enabled) this.playSoftNote(harmony, 0.03, 1.9);
         }, 420);
       }
       this.ambientTimer = window.setTimeout(
@@ -79,7 +79,7 @@ export class OrchardAudio {
     osc.frequency.setValueAtTime(freq, now);
 
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(volume, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.035);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
     osc.connect(gain);
@@ -92,13 +92,13 @@ export class OrchardAudio {
     if (!this.enabled) return;
     freqs.forEach((freq, idx) => {
       window.setTimeout(() => {
-        if (this.enabled) this.playSoftNote(freq, 0.06, 0.75);
+        if (this.enabled) this.playSoftNote(freq, 0.06, 0.72);
       }, idx * spacing * 1000);
     });
   }
 
   public playTreeHug(): void {
-    this.playChime([392.0, 493.88, 587.33, 783.99], 0.085);
+    this.playChime([392.0, 493.88, 587.33, 783.99], 0.08);
   }
 
   public playApplePop(): void {
@@ -119,12 +119,80 @@ export class OrchardAudio {
     osc.stop(now + 0.16);
   }
 
+  public playCollect(golden: boolean, combo: number): void {
+    if (!this.enabled) return;
+    const pitchBoost = Math.min(combo, 10) * 35;
+    if (golden) {
+      this.playChime(
+        [783.99 + pitchBoost, 987.77 + pitchBoost, 1318.5 + pitchBoost],
+        0.055,
+      );
+      return;
+    }
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(560 + pitchBoost, now);
+    osc.frequency.exponentialRampToValueAtTime(920 + pitchBoost, now + 0.085);
+    gain.gain.setValueAtTime(0.065, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
+  public playJump(): void {
+    if (!this.enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(410, now + 0.11);
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
   public playWatering(): void {
     this.playChime([587.33, 659.25, 880.0, 1046.5], 0.07);
   }
 
   public playCheerfulWave(): void {
     this.playChime([523.25, 659.25, 783.99, 1046.5], 0.075);
+  }
+
+  public playRushStart(): void {
+    this.playChime([523.25, 659.25, 783.99, 1046.5], 0.09);
+  }
+
+  public playRushFinish(isRecord: boolean): void {
+    if (isRecord) {
+      this.playChime([523.25, 659.25, 783.99, 1046.5, 1318.5], 0.085);
+    } else {
+      this.playChime([659.25, 587.33, 523.25, 783.99], 0.09);
+    }
+  }
+
+  public playCoinChime(): void {
+    this.playChime([987.77, 1318.5], 0.065);
+  }
+
+  public playPlantSeed(): void {
+    this.playChime([329.63, 440.0], 0.06);
+  }
+
+  public playNewDayChime(): void {
+    this.playChime([523.25, 659.25, 783.99, 1046.5, 1318.5], 0.11);
   }
 
   public dispose(): void {

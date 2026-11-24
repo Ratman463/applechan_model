@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SpeechCategory } from '../i18n';
 import { OrchardTextureLibrary } from './textures';
 import { AppleChanAction, AppleChanOutfit } from './types';
 
@@ -12,31 +13,13 @@ export interface AppleChanTreeTarget {
 export interface AppleChanCallbacks {
   onTreeHugPeak: (treeIndex: number, worldPos: THREE.Vector3) => void;
   onWaterSplash: (worldPos: THREE.Vector3) => void;
-  onSpeech: (text: string) => void;
+  onSpeechCategory: (category: SpeechCategory) => void;
   onActionChange: (action: AppleChanAction) => void;
 }
 
-const HUG_QUOTES = [
-  '"Can I... hug you?" *squeezes the apple trunk tightly!*',
-  '"Every tree in this orchard is my family!"',
-  '"Oops, sorry... I forgot not everyone is as sturdy as an apple tree!"',
-  '"Hehe, the leaves rustle happily whenever I give them a big hug!"',
-];
-
-const WATER_QUOTES = [
-  '"Drink up, little saplings! Grow tall enough to reach the blue sky!"',
-  '"Green like grass, blue like the sky—my two favorite colors!"',
-  '"Five years of planting trees, and every sprout still makes me smile!"',
-];
-
-const WAVE_QUOTES = [
-  '"Welcome to my apple orchard! Would you like a freshly picked apple?"',
-  '"I can manage the whole orchard myself... though having you visit is nice!"',
-  '"Look up! The blossoms look so pretty against the sky today!"',
-];
-
 // Reusable scratch math objects (zero GC in animation loop)
 const _tmpPos = new THREE.Vector3();
+const _resolvedPos = new THREE.Vector2();
 
 export class AppleChanCharacter {
   public readonly group = new THREE.Group();
@@ -45,11 +28,13 @@ export class AppleChanCharacter {
   private readonly textures: OrchardTextureLibrary;
   private readonly callbacks: AppleChanCallbacks;
   private readonly groundHeightAt: (x: number, z: number) => number;
+  private readonly resolveWalkPosition: (x: number, z: number, out: THREE.Vector2) => void;
   private readonly trees: AppleChanTreeTarget[];
   private readonly nurserySpot = new THREE.Vector3(6.5, 0, 5.2);
 
   // Articulated hierarchy
   private readonly bodyRoot = new THREE.Group();
+  private readonly contactShadow: THREE.Mesh;
   private readonly headGroup = new THREE.Group();
   private readonly backHairPivot = new THREE.Group();
   private readonly frontStrandPivot = new THREE.Group();
@@ -74,7 +59,7 @@ export class AppleChanCharacter {
   private readonly legMat: THREE.MeshStandardMaterial;
   private readonly skirtMat: THREE.MeshStandardMaterial;
 
-  // State machine
+  // State machine & direct player control
   private outfit: AppleChanOutfit = 'common';
   private action: AppleChanAction = 'stroll';
   private actionTimer = 0;
@@ -84,9 +69,16 @@ export class AppleChanCharacter {
   private targetPos = new THREE.Vector3(0, 0, 2.2);
   private targetTree: AppleChanTreeTarget | null = null;
   private hasTriggeredPeak = false;
-  private hugQuoteIdx = 0;
-  private waterQuoteIdx = 0;
-  private waveQuoteIdx = 0;
+
+  // Direct player movement & true 3D voxel jump/climb physics
+  private inputForward = 0;
+  private inputRight = 0;
+  private inputCameraYaw = 0;
+  private manualControlTimer = 0;
+  private rushMode = false;
+  private posY = 0;
+  private velY = 0;
+  private happyPulseTimer = 0;
 
   // Scenic orchard patrol waypoints along the dirt paths
   private readonly waypoints: [number, number][] = [
@@ -105,11 +97,13 @@ export class AppleChanCharacter {
   constructor(
     textures: OrchardTextureLibrary,
     groundHeightAt: (x: number, z: number) => number,
+    resolveWalkPosition: (x: number, z: number, out: THREE.Vector2) => void,
     trees: AppleChanTreeTarget[],
     callbacks: AppleChanCallbacks,
   ) {
     this.textures = textures;
     this.groundHeightAt = groundHeightAt;
+    this.resolveWalkPosition = resolveWalkPosition;
     this.trees = trees;
     this.callbacks = callbacks;
 
@@ -173,9 +167,9 @@ export class AppleChanCharacter {
       depthWrite: false,
       opacity: 0.55,
     });
-    const contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
-    contactShadow.position.y = 0.025;
-    this.group.add(contactShadow);
+    this.contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    this.contactShadow.position.y = 0.025;
+    this.group.add(this.contactShadow);
 
     // -----------------------------------------------------------------------
     // 1. LEGS (petite Minecraft proportions, 0.56 height, bottom at y = 0)
@@ -529,7 +523,8 @@ export class AppleChanCharacter {
     // Initial placement on the orchard dirt path near the center
     const startX = -0.6;
     const startZ = 2.8;
-    this.group.position.set(startX, this.groundHeightAt(startX, startZ), startZ);
+    this.posY = this.groundHeightAt(startX, startZ);
+    this.group.position.set(startX, this.posY, startZ);
     this.group.rotation.y = 0.3;
   }
 
@@ -695,6 +690,47 @@ export class AppleChanCharacter {
     this.callbacks.onActionChange('water');
   }
 
+  public setPlayerInput(forward: number, right: number, cameraYaw: number): void {
+    this.inputForward = forward;
+    this.inputRight = right;
+    this.inputCameraYaw = cameraYaw;
+    if (forward !== 0 || right !== 0) {
+      this.manualControlTimer = 9.0;
+      if (this.action !== 'stroll') {
+        this.action = 'stroll';
+        this.targetTree = null;
+        this.wateringCanGroup.visible = false;
+        this.appleBasketGroup.visible = true;
+        this.callbacks.onActionChange('stroll');
+      }
+    }
+  }
+
+  public triggerJump(): boolean {
+    const groundY = this.groundHeightAt(this.group.position.x, this.group.position.z);
+    if (this.posY > groundY + 0.08) return false;
+    // v^2 / (2g) = 8.1^2 / (2 * 21.0) = 1.56 full voxel blocks — effortlessly climbs 1-block ledges!
+    this.velY = 8.1;
+    this.manualControlTimer = 9.0;
+    return true;
+  }
+
+  public setRushMode(active: boolean): void {
+    this.rushMode = active;
+    if (active) {
+      this.manualControlTimer = 9.0;
+      this.idlePause = 0;
+    }
+  }
+
+  public pulseHappyFace(duration = 0.7): void {
+    this.happyPulseTimer = Math.max(this.happyPulseTimer, duration);
+  }
+
+  public isUnderManualControl(): boolean {
+    return this.manualControlTimer > 0 || this.rushMode;
+  }
+
   public commandWave(): void {
     this.targetTree = null;
     this.action = 'wave';
@@ -703,9 +739,7 @@ export class AppleChanCharacter {
     this.wateringCanGroup.visible = false;
     this.appleBasketGroup.visible = true;
     this.callbacks.onActionChange('wave');
-    const quote = WAVE_QUOTES[this.waveQuoteIdx % WAVE_QUOTES.length];
-    this.waveQuoteIdx++;
-    this.callbacks.onSpeech(quote);
+    this.callbacks.onSpeechCategory('wave');
   }
 
   private setFaceTexture(tex: THREE.CanvasTexture): void {
@@ -731,25 +765,70 @@ export class AppleChanCharacter {
     }
 
     let isMoving = false;
-    let isHappyFace = false;
+    let isHappyFace = this.happyPulseTimer > 0;
+    if (this.happyPulseTimer > 0) {
+      this.happyPulseTimer = Math.max(0, this.happyPulseTimer - clampedDt);
+    }
+
+    // True 3D vertical gravity & landing physics
+    const currentGroundY = this.groundHeightAt(this.group.position.x, this.group.position.z);
+    if (this.posY > currentGroundY || this.velY > 0) {
+      this.posY += this.velY * clampedDt;
+      this.velY -= 21.0 * clampedDt;
+      if (this.posY <= currentGroundY) {
+        this.posY = currentGroundY;
+        this.velY = 0;
+      }
+    } else {
+      // Smooth step-up when walking onto gentle bridge planks or low steps
+      this.posY = THREE.MathUtils.damp(this.posY, currentGroundY, 22, clampedDt);
+      this.velY = 0;
+    }
+
+    const airborneHeight = Math.max(0, this.posY - currentGroundY);
+
+    const hasPlayerMove = this.inputForward !== 0 || this.inputRight !== 0;
+    if (this.manualControlTimer > 0 && !hasPlayerMove && !this.rushMode) {
+      this.manualControlTimer = Math.max(0, this.manualControlTimer - clampedDt);
+    }
 
     if (this.action === 'stroll') {
-      if (this.idlePause > 0) {
-        this.idlePause -= clampedDt;
-      } else {
-        const [wx, wz] = this.waypoints[this.waypointIdx];
-        this.targetPos.set(wx, 0, wz);
-        const arrived = this.moveToward(this.targetPos.x, this.targetPos.z, 1.55, clampedDt);
-        isMoving = !arrived;
-        if (arrived) {
-          this.waypointIdx = (this.waypointIdx + 1) % this.waypoints.length;
-          this.idlePause = 1.4 + Math.random() * 1.6;
+      if (hasPlayerMove) {
+        // Camera-relative smooth 3rd-person movement with 1-block ledge climbing!
+        const len = Math.hypot(this.inputForward, this.inputRight) || 1;
+        const nf = this.inputForward / len;
+        const nr = this.inputRight / len;
+        const sinY = Math.sin(this.inputCameraYaw);
+        const cosY = Math.cos(this.inputCameraYaw);
+        const moveX = sinY * nf - cosY * nr;
+        const moveZ = cosY * nf + sinY * nr;
+        const speed = this.rushMode ? 6.0 : 4.9;
+        this.stepHorizontalWithClimbing(
+          this.group.position.x + moveX * speed * clampedDt,
+          this.group.position.z + moveZ * speed * clampedDt,
+        );
+        const desiredYaw = Math.atan2(moveX, moveZ);
+        this.group.rotation.y = this.dampAngle(this.group.rotation.y, desiredYaw, 14, clampedDt);
+        isMoving = true;
+      } else if (this.manualControlTimer <= 0 && !this.rushMode) {
+        if (this.idlePause > 0) {
+          this.idlePause -= clampedDt;
+        } else {
+          const [wx, wz] = this.waypoints[this.waypointIdx];
+          this.targetPos.set(wx, 0, wz);
+          const arrived = this.moveToward(this.targetPos.x, this.targetPos.z, 1.55, clampedDt);
+          isMoving = !arrived;
+          if (arrived) {
+            this.waypointIdx = (this.waypointIdx + 1) % this.waypoints.length;
+            this.idlePause = 1.4 + Math.random() * 1.6;
+          }
         }
       }
       this.appleBasketGroup.visible = true;
       this.wateringCanGroup.visible = false;
     } else if (this.action === 'hug' && this.targetTree) {
-      const arrived = this.moveToward(this.targetPos.x, this.targetPos.z, 2.85, clampedDt);
+      const hugRunSpeed = this.rushMode ? 5.8 : 3.4;
+      const arrived = this.moveToward(this.targetPos.x, this.targetPos.z, hugRunSpeed, clampedDt);
       if (!arrived) {
         isMoving = true;
       } else {
@@ -767,13 +846,12 @@ export class AppleChanCharacter {
         this.actionTimer += clampedDt;
         isHappyFace = true;
 
-        if (!this.hasTriggeredPeak && this.actionTimer > 0.25) {
+        const peakDelay = this.rushMode ? 0.12 : 0.25;
+        if (!this.hasTriggeredPeak && this.actionTimer > peakDelay) {
           this.hasTriggeredPeak = true;
           _tmpPos.set(this.targetTree.x, this.group.position.y + 1.5, this.targetTree.z);
           this.callbacks.onTreeHugPeak(this.targetTree.index, _tmpPos);
-          const quote = HUG_QUOTES[this.hugQuoteIdx % HUG_QUOTES.length];
-          this.hugQuoteIdx++;
-          this.callbacks.onSpeech(quote);
+          this.callbacks.onSpeechCategory('hug');
         }
 
         // Hug pose: arms wrapped forward and inward around the trunk, leaning affectionately
@@ -810,7 +888,8 @@ export class AppleChanCharacter {
         );
         this.bodyRoot.position.y = Math.abs(Math.sin(this.actionTimer * 5)) * 0.04;
 
-        if (this.actionTimer >= 3.2) {
+        const hugDuration = this.rushMode ? 0.95 : 2.8;
+        if (this.actionTimer >= hugDuration) {
           this.action = 'stroll';
           this.targetTree = null;
           this.idlePause = 0.6;
@@ -818,7 +897,7 @@ export class AppleChanCharacter {
         }
       }
     } else if (this.action === 'water') {
-      const arrived = this.moveToward(this.targetPos.x, this.targetPos.z, 2.6, clampedDt);
+      const arrived = this.moveToward(this.targetPos.x, this.targetPos.z, 3.0, clampedDt);
       if (!arrived) {
         isMoving = true;
       } else {
@@ -861,12 +940,10 @@ export class AppleChanCharacter {
           this.hasTriggeredPeak = true;
           _tmpPos.set(8.4, this.group.position.y + 0.7, 5.2);
           this.callbacks.onWaterSplash(_tmpPos);
-          const quote = WATER_QUOTES[this.waterQuoteIdx % WATER_QUOTES.length];
-          this.waterQuoteIdx++;
-          this.callbacks.onSpeech(quote);
+          this.callbacks.onSpeechCategory('water');
         }
 
-        if (this.actionTimer >= 3.0) {
+        if (this.actionTimer >= 2.8) {
           this.action = 'stroll';
           this.wateringCanGroup.visible = false;
           this.appleBasketGroup.visible = true;
@@ -896,7 +973,7 @@ export class AppleChanCharacter {
       );
       this.headGroup.rotation.z = Math.sin(this.actionTimer * 8) * 0.1;
 
-      if (this.actionTimer >= 2.6) {
+      if (this.actionTimer >= 2.4) {
         this.action = 'stroll';
         this.callbacks.onActionChange('stroll');
       }
@@ -910,13 +987,13 @@ export class AppleChanCharacter {
 
     if (!inCustomPose) {
       if (isMoving) {
-        const strideSpeed = this.action === 'stroll' ? 7.2 : 10.5;
+        const strideSpeed = hasPlayerMove ? (this.rushMode ? 13.5 : 11.5) : this.action === 'stroll' ? 7.2 : 11.0;
         this.walkPhase += clampedDt * strideSpeed;
-        const swing = Math.sin(this.walkPhase) * 0.58;
+        const swing = Math.sin(this.walkPhase) * 0.62;
         this.leftLegPivot.rotation.x = swing;
         this.rightLegPivot.rotation.x = -swing;
-        this.leftArmPivot.rotation.x = -swing * 0.72;
-        this.rightArmPivot.rotation.x = swing * 0.72;
+        this.leftArmPivot.rotation.x = -swing * 0.74;
+        this.rightArmPivot.rotation.x = swing * 0.74;
         this.leftArmPivot.rotation.z = THREE.MathUtils.damp(
           this.leftArmPivot.rotation.z,
           0.08,
@@ -929,8 +1006,9 @@ export class AppleChanCharacter {
           10,
           clampedDt,
         );
-        // Cheerful bouncy step!
-        this.bodyRoot.position.y = Math.abs(Math.sin(this.walkPhase)) * 0.085;
+        // Cheerful bouncy step when grounded
+        this.bodyRoot.position.y =
+          airborneHeight > 0.04 ? 0 : Math.abs(Math.sin(this.walkPhase)) * 0.085;
         this.headGroup.rotation.z = Math.sin(this.walkPhase) * 0.05;
         this.headGroup.rotation.x = THREE.MathUtils.damp(
           this.headGroup.rotation.x,
@@ -976,7 +1054,8 @@ export class AppleChanCharacter {
           8,
           clampedDt,
         );
-        this.bodyRoot.position.y = Math.sin(elapsed * 2.8) * 0.025;
+        this.bodyRoot.position.y =
+          airborneHeight > 0.04 ? 0 : Math.sin(elapsed * 2.8) * 0.025;
         this.headGroup.rotation.y = Math.sin(elapsed * 0.9) * 0.24;
         this.headGroup.rotation.z = Math.sin(elapsed * 1.4) * 0.05;
         this.headGroup.rotation.x = THREE.MathUtils.damp(
@@ -1008,8 +1087,25 @@ export class AppleChanCharacter {
       );
     }
 
+    // Recompute exact ground beneath new X/Z so landing on climbed blocks snaps cleanly
+    const finalGroundY = this.groundHeightAt(this.group.position.x, this.group.position.z);
+    if (this.posY < finalGroundY) {
+      this.posY = finalGroundY;
+      this.velY = 0;
+    }
+    this.group.position.y = this.posY;
+
+    // Keep contact shadow grounded right on the block surface beneath Apple-chan
+    const heightAboveGround = Math.max(0, this.posY - finalGroundY);
+    this.contactShadow.position.y = -heightAboveGround + 0.025;
+    const shadowScale = Math.max(0.5, 1 - heightAboveGround * 0.22);
+    this.contactShadow.scale.setScalar(shadowScale);
+
     // Gentle hair sway physics
-    const hairTargetRot = isMoving ? 0.22 + Math.abs(Math.sin(this.walkPhase)) * 0.1 : 0.06;
+    const hairTargetRot =
+      isMoving || heightAboveGround > 0.1
+        ? 0.24 + Math.abs(Math.sin(this.walkPhase)) * 0.1
+        : 0.06;
     this.backHairPivot.rotation.x = THREE.MathUtils.damp(
       this.backHairPivot.rotation.x,
       hairTargetRot + Math.sin(elapsed * 2.3) * 0.04,
@@ -1026,27 +1122,62 @@ export class AppleChanCharacter {
     } else {
       this.setFaceTexture(this.textures.acFaceNormal);
     }
+  }
 
-    // Always stay flush with ground height
-    const groundY = this.groundHeightAt(this.group.position.x, this.group.position.z);
-    this.group.position.y = THREE.MathUtils.damp(
-      this.group.position.y,
-      groundY,
-      18,
-      clampedDt,
-    );
+  /**
+   * Moves Apple-chan horizontally while respecting 1-block cliff ledges:
+   * - Can walk smoothly onto slopes/steps <= 0.55 blocks above feet.
+   * - Must jump (reaching up to 1.56 blocks high!) to hop onto 1-block higher terraces.
+   * - Slides smoothly along cliff edges if only one axis is blocked.
+   */
+  private stepHorizontalWithClimbing(desiredX: number, desiredZ: number): void {
+    const curX = this.group.position.x;
+    const curZ = this.group.position.z;
+    const maxClimbY = this.posY + 0.55;
+
+    this.resolveWalkPosition(desiredX, desiredZ, _resolvedPos);
+    if (this.groundHeightAt(_resolvedPos.x, _resolvedPos.y) <= maxClimbY) {
+      this.group.position.x = _resolvedPos.x;
+      this.group.position.z = _resolvedPos.y;
+      return;
+    }
+
+    // Try sliding along X axis only
+    this.resolveWalkPosition(desiredX, curZ, _resolvedPos);
+    if (this.groundHeightAt(_resolvedPos.x, _resolvedPos.y) <= maxClimbY) {
+      this.group.position.x = _resolvedPos.x;
+      this.group.position.z = _resolvedPos.y;
+      return;
+    }
+
+    // Try sliding along Z axis only
+    this.resolveWalkPosition(curX, desiredZ, _resolvedPos);
+    if (this.groundHeightAt(_resolvedPos.x, _resolvedPos.y) <= maxClimbY) {
+      this.group.position.x = _resolvedPos.x;
+      this.group.position.z = _resolvedPos.y;
+    }
   }
 
   private moveToward(tx: number, tz: number, speed: number, dt: number): boolean {
     const dx = tx - this.group.position.x;
     const dz = tz - this.group.position.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.18) {
+    if (dist < 0.22) {
       return true;
     }
     const step = Math.min(dist, speed * dt);
-    this.group.position.x += (dx / dist) * step;
-    this.group.position.z += (dz / dist) * step;
+    const prevX = this.group.position.x;
+    const prevZ = this.group.position.z;
+    this.stepHorizontalWithClimbing(
+      prevX + (dx / dist) * step,
+      prevZ + (dz / dist) * step,
+    );
+    // Auto-hop if autonomous patrol/hug path hits a 1-block step!
+    if (
+      Math.hypot(this.group.position.x - prevX, this.group.position.z - prevZ) < step * 0.2
+    ) {
+      this.triggerJump();
+    }
     const desiredYaw = Math.atan2(dx, dz);
     this.group.rotation.y = this.dampAngle(this.group.rotation.y, desiredYaw, 10, dt);
     return false;
